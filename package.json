@@ -6,8 +6,9 @@
   "private": true,
   "scripts": {
     "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make"
+    "build:sidecar": "bash scripts/build-sidecar.sh",
+    "package": "npm run build:sidecar && electron-forge package",
+    "make": "npm run build:sidecar && electron-forge make"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.5.0",
@@ -23,7 +24,11 @@
         "appBundleId": "net.charlesberret.setsweep",
         "icon": "icon",
         "osxSign": false,
-        "osxNotarize": false
+        "osxNotarize": false,
+        "extraResource": [
+          "resources/setsweep-sidecar",
+          "resources/version.json"
+        ]
       },
       "makers": [
         { "name": "@electron-forge/maker-zip", "platforms": ["darwin"] }

@@ -15,6 +15,55 @@ let serverPort = null;
 let mainWindow = null;
 let splashWindow = null;
 let sidecarLog = null;
+let versionInfo = null;
+
+function loadVersionInfo() {
+  const candidates = [
+    path.join(__dirname, 'resources', 'version.json'),
+    path.join(process.resourcesPath || '', 'version.json'),
+  ];
+  for (const p of candidates) {
+    try {
+      return JSON.parse(fs.readFileSync(p, 'utf8'));
+    } catch { /* try next */ }
+  }
+  return { shell: app.getVersion(), setsweep: 'dev' };
+}
+
+function resolveSidecar() {
+  if (process.env.SETSWEEP_CMD) {
+    return { cmd: process.env.SETSWEEP_CMD, args: ['--web'], bundled: false };
+  }
+
+  const bundled = path.join(process.resourcesPath || '', 'setsweep-sidecar', 'setsweep-sidecar');
+  if (bundled && fs.existsSync(bundled)) {
+    return { cmd: bundled, args: [], bundled: true };
+  }
+
+  return { cmd: SETSWEEP_CMD, args: ['--web'], bundled: false };
+}
+
+function sidecarEnv() {
+  const PATH = [
+    process.env.PATH || '',
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    path.join(process.env.HOME || '', '.local/bin'),
+    path.join(process.env.HOME || '', '.pyenv/shims'),
+  ].filter(Boolean).join(':');
+
+  const env = {
+    ...process.env,
+    PATH,
+    PYTHONUNBUFFERED: '1',
+  };
+
+  if (resolveSidecar().bundled) {
+    env.DESK_PROJECTS = path.join(app.getPath('userData'), 'projects.json');
+  }
+
+  return env;
+}
 
 function openSidecarLog() {
   const logDir = app.getPath('logs');
@@ -73,13 +122,8 @@ function killSidecar() {
 }
 
 function startSidecar(port) {
-  const PATH = [
-    process.env.PATH || '',
-    '/opt/homebrew/bin',
-    '/usr/local/bin',
-    path.join(process.env.HOME || '', '.local/bin'),
-    path.join(process.env.HOME || '', '.pyenv/shims'),
-  ].filter(Boolean).join(':');
+  const { cmd, args, bundled } = resolveSidecar();
+  const spawnArgs = [...args, '--port', String(port), '--no-open'];
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -90,18 +134,18 @@ function startSidecar(port) {
       reject(err);
     };
 
-    const proc = spawn(SETSWEEP_CMD, ['--web', '--port', String(port), '--no-open'], {
-      env: { ...process.env, PATH, PYTHONUNBUFFERED: '1' },
+    const proc = spawn(cmd, spawnArgs, {
+      env: sidecarEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     serverProc = proc;
 
     proc.on('error', (err) => {
-      fail(new Error(
-        `Could not launch setsweep (${SETSWEEP_CMD}): ${err.message}\n\n` +
-        'Is `setsweep` on PATH? Try: which setsweep'
-      ));
+      const hint = bundled
+        ? 'The bundled server failed to launch.'
+        : 'Is `setsweep` on PATH? Try: which setsweep';
+      fail(new Error(`Could not launch setsweep (${cmd}): ${err.message}\n\n${hint}`));
     });
 
     proc.stdout.on('data', (b) => logSidecar(b));
@@ -273,6 +317,16 @@ async function createWindow() {
   });
 }
 
+function showStartupError(err) {
+  closeSplash();
+  const bundled = resolveSidecar().bundled;
+  const extra = bundled
+    ? `Sidecar log: ${path.join(app.getPath('logs'), 'sidecar.log')}`
+    : 'Is `setsweep` on PATH? Try: which setsweep';
+  dialog.showErrorBox('Setsweep failed to start',
+    `Could not launch the setsweep server.\n\n${err.message}\n\n${extra}`);
+}
+
 // IPC for folder picker (preload exposes this as window.pywebview.api.pick_folder).
 ipcMain.handle('setsweep:pick-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -287,6 +341,8 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
+  app.setName('Setsweep');
+
   app.on('second-instance', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -295,18 +351,21 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
-    console.log('[shell] app ready');
+    versionInfo = loadVersionInfo();
+    app.setAboutPanelOptions({
+      applicationName: 'Setsweep',
+      applicationVersion: versionInfo.shell,
+      version: `Setsweep server ${versionInfo.setsweep}`,
+      copyright: 'Charles Berret',
+    });
+
     buildMenu();
     try {
-      console.log('[shell] picking port + spawning sidecar');
       await createWindow();
       console.log(`[shell] window loaded http://127.0.0.1:${serverPort}/`);
     } catch (err) {
       console.error('[shell] startup failed:', err);
-      closeSplash();
-      dialog.showErrorBox('Setsweep failed to start',
-        `Could not launch the setsweep server.\n\n${err.message}\n\n` +
-        `Is \`setsweep\` on PATH? Try: which setsweep`);
+      showStartupError(err);
       app.quit();
     }
 
@@ -315,11 +374,7 @@ if (!gotLock) {
         try {
           await createWindow();
         } catch (err) {
-          console.error('[shell] startup failed:', err);
-          closeSplash();
-          dialog.showErrorBox('Setsweep failed to start',
-            `Could not launch the setsweep server.\n\n${err.message}\n\n` +
-            'Is `setsweep` on PATH? Try: which setsweep');
+          showStartupError(err);
           app.quit();
         }
       }

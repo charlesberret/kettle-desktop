@@ -1,3 +1,9 @@
 node_modules/
 out/
+build/
+dist/
 .DS_Store
+
+# PyInstaller sidecar (built by scripts/build-sidecar.sh)
+resources/setsweep-sidecar/
+resources/version.json
