@@ -327,8 +327,11 @@ function wireNavigation(win, port) {
   });
 
   win.webContents.on('did-finish-load', () => {
+    const init = process.platform === 'darwin'
+      ? "document.body.classList.add('desktop-shell');"
+      : '';
     win.webContents.executeJavaScript(
-      "window.dispatchEvent(new Event('pywebviewready'));"
+      init + "window.dispatchEvent(new Event('pywebviewready'));"
     ).catch(() => {});
   });
 }
@@ -348,18 +351,24 @@ async function createWindow() {
   await startSidecar(serverPort);
 
   const saved = loadWindowState();
-  mainWindow = new BrowserWindow({
+  const winOpts = {
     title: 'Setsweep',
     ...saved,
     minWidth: 1100,
     minHeight: 700,
     show: false,
+    backgroundColor: '#000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
-  });
+  };
+  if (process.platform === 'darwin') {
+    winOpts.titleBarStyle = 'hiddenInset';
+    winOpts.trafficLightPosition = { x: 14, y: 12 };
+  }
+  mainWindow = new BrowserWindow(winOpts);
 
   wireNavigation(mainWindow, serverPort);
 
