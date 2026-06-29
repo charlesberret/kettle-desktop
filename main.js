@@ -43,6 +43,43 @@ function resolveSidecar() {
   return { cmd: SETSWEEP_CMD, args: ['--web'], bundled: false };
 }
 
+function resolveProjectsPath() {
+  if (process.env.DESK_PROJECTS) return process.env.DESK_PROJECTS;
+  return path.join(app.getPath('userData'), 'projects.json');
+}
+
+function registryImportSources() {
+  const srcRoot = process.env.SETSWEEP_SRC
+    || path.join(process.env.HOME || '', 'Seafile/Code/active/setsweep');
+  return [
+    process.env.SETSWEEP_PROJECTS_SRC,
+    path.join(srcRoot, 'projects.json'),
+  ].filter(Boolean);
+}
+
+/** Seed userData/projects.json from a dev registry on first Electron launch. */
+function ensureProjectsRegistry() {
+  const dest = resolveProjectsPath();
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  if (fs.existsSync(dest)) return dest;
+
+  for (const src of registryImportSources()) {
+    try {
+      if (fs.existsSync(src) && fs.statSync(src).isFile()) {
+        fs.copyFileSync(src, dest);
+        console.log(`[shell] imported project registry from ${src}`);
+        return dest;
+      }
+    } catch (err) {
+      console.warn(`[shell] could not import registry from ${src}:`, err.message);
+    }
+  }
+
+  fs.writeFileSync(dest, `${JSON.stringify({ projects: [] }, null, 2)}\n`);
+  console.log(`[shell] created empty project registry at ${dest}`);
+  return dest;
+}
+
 function sidecarEnv() {
   const PATH = [
     process.env.PATH || '',
@@ -56,11 +93,8 @@ function sidecarEnv() {
     ...process.env,
     PATH,
     PYTHONUNBUFFERED: '1',
+    DESK_PROJECTS: resolveProjectsPath(),
   };
-
-  if (resolveSidecar().bundled) {
-    env.DESK_PROJECTS = path.join(app.getPath('userData'), 'projects.json');
-  }
 
   return env;
 }
@@ -308,6 +342,7 @@ async function createWindow() {
 
   createSplash();
   sidecarLog = openSidecarLog();
+  ensureProjectsRegistry();
 
   serverPort = await findFreePort();
   await startSidecar(serverPort);
