@@ -8,6 +8,7 @@
     "start": "electron-forge start",
     "build:sidecar": "bash scripts/build-sidecar.sh",
     "package": "npm run build:sidecar && electron-forge package",
+    "install:app": "npm run package && bash scripts/install-app.sh",
     "make": "npm run build:sidecar && electron-forge make"
   },
   "devDependencies": {

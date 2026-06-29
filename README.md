@@ -26,6 +26,7 @@ Override the sidecar binary with `SETSWEEP_CMD=/path/to/setsweep`.
 ```sh
 npm run build:sidecar   # PyInstaller → resources/setsweep-sidecar/ + resources/version.json
 npm run package         # → out/Setsweep-darwin-arm64/Setsweep.app
+npm run install:app     # package + copy to ~/Applications/Setsweep.app (Spotlight / launcher)
 npm run make            # → out/make/zip/darwin/arm64/Setsweep-*.zip
 ```
 
@@ -33,7 +34,9 @@ npm run make            # → out/make/zip/darwin/arm64/Setsweep-*.zip
 
 The packaged `.app` is self-contained: no Python install required. Project registry and settings live under `~/Library/Application Support/Setsweep/`. Sidecar logs: `~/Library/Logs/Setsweep/sidecar.log`.
 
-No code signing or notarization yet. macOS Gatekeeper will block on first launch — right-click → Open, or `xattr -dr com.apple.quarantine /Applications/Setsweep.app`.
+No code signing or notarization yet. macOS Gatekeeper may block on first launch — right-click → Open, or run `npm run install:app` (strips quarantine after copy).
+
+**Launcher note:** If you previously installed the retired pywebview wrapper at `~/Applications/Setsweep.app`, replace it with `npm run install:app`. The Electron bundle uses bundle id `net.charlesberret.setsweep` and is self-contained.
 
 ## Layout
 
