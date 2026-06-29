@@ -1,47 +1,57 @@
 # setsweep-desktop
 
-Electron shell for [setsweep](../../Seafile/Code/active/setsweep/), the desk/review tool. Wraps the existing local Python server in a native macOS window — the .app you double-click instead of running `setsweep` in a terminal.
+Electron shell for [setsweep](../../Seafile/Code/active/setsweep/), the desk/review tool. Wraps the Python server in a native macOS window — the `.app` you double-click instead of running `setsweep` in a terminal.
 
 ## Architecture
 
-- **Sidecar pattern.** The Electron main process spawns `setsweep --web --port <free> --no-open` as a subprocess on launch, polls until it's listening, then `loadURL`s `http://127.0.0.1:<port>/` in a BrowserWindow.
-- **Frontend unchanged.** `preload.js` shims `window.pywebview.api.pick_folder` to Electron's native `dialog.showOpenDialog`, so `static/index.html` runs as-is.
-- **External-link interception.** Off-localhost URLs are bounced to the default browser via `shell.openExternal` (the fix for the Lex-in-Setsweep class of bug — pywebview happily followed external links in-window).
+- **Sidecar pattern.** On launch the main process starts the setsweep web server (bundled binary when packaged, otherwise `setsweep --web` on PATH), polls until it is listening, then loads `http://127.0.0.1:<port>/` in a `BrowserWindow`.
+- **Frontend unchanged.** `preload.js` shims `window.pywebview.api.pick_folder` to Electron's native folder dialog, so `static/index.html` runs as-is.
+- **External-link interception.** Off-localhost URLs open in the default browser via `shell.openExternal`.
 - **Single-instance lock.** Second launches focus the existing window.
-- **Clean shutdown.** `before-quit` kills the Python sidecar.
+- **Clean shutdown.** Closing the window or quitting kills the Python sidecar.
 
 ## Develop
 
 ```sh
 npm install        # one-time
-npm start          # launches Electron in dev mode (electron-forge start)
+npm start          # electron-forge start; requires setsweep on PATH
 ```
 
-Requires `setsweep` on PATH (installed from the parent `~/Seafile/Code/active/setsweep/` via `pip install -e`). The shell widens its PATH to include Homebrew, pyenv shims, and `~/.local/bin` so a GUI launch resolves `setsweep` the same way a terminal does.
+For dev, install setsweep from the parent repo (`pip install -e ~/Seafile/Code/active/setsweep`). The shell widens PATH to include Homebrew, pyenv shims, and `~/.local/bin` so a GUI launch resolves `setsweep` the same way a terminal does.
+
+Override the sidecar binary with `SETSWEEP_CMD=/path/to/setsweep`.
 
 ## Build
 
 ```sh
-npm run package    # → out/Setsweep-darwin-arm64/Setsweep.app  (unsigned, ~230MB)
-npm run make       # → out/make/zip/darwin/arm64/Setsweep-*.zip (~93MB)
+npm run build:sidecar   # PyInstaller → resources/setsweep-sidecar/ + resources/version.json
+npm run package         # → out/Setsweep-darwin-arm64/Setsweep.app
+npm run make            # → out/make/zip/darwin/arm64/Setsweep-*.zip
 ```
 
-No code signing or notarization. macOS will Gatekeeper-block the .app on first launch — right-click → Open, or `xattr -dr com.apple.quarantine /Applications/Setsweep.app`.
+`build:sidecar` reads the setsweep source from `SETSWEEP_SRC` (default `~/Seafile/Code/active/setsweep`) and builds with `SETSWEEP_VENV` (default `~/.setsweep-venv`).
 
-## Phase 2 (deferred)
+The packaged `.app` is self-contained: no Python install required. Project registry and settings live under `~/Library/Application Support/Setsweep/`. Sidecar logs: `~/Library/Logs/Setsweep/sidecar.log`.
 
-- **PyInstaller-bundled sidecar.** Today the .app shells out to whatever `setsweep` is on PATH. Phase 2: PyInstaller compiles `server.py` + deps into a binary copied into `Contents/Resources/`, so the .app is self-contained and survives on a Mac with no Python install.
-- **Retire `app.py` / pywebview** in the parent setsweep repo once this shell is the only window.
-- **Code signing + DMG** once you want to share the .app with anyone else.
+No code signing or notarization yet. macOS Gatekeeper will block on first launch — right-click → Open, or `xattr -dr com.apple.quarantine /Applications/Setsweep.app`.
 
 ## Layout
 
 ```
 ~/Repos/setsweep-desktop/
-├── main.js              Electron main: sidecar spawn, window, menus, link interception
-├── preload.js           contextBridge: window.pywebview.api shim
-├── package.json         electron-forge config
-├── icon.icns            App icon (placeholder; built from icon.iconset/)
-├── icon.iconset/        PNG sources for the .icns
-└── out/                 Build outputs (gitignored)
+├── main.js                 Electron main: sidecar, window, menus, link interception
+├── preload.js              contextBridge: window.pywebview.api shim
+├── splash.html             Startup splash while the sidecar binds
+├── sidecar_entry.py        PyInstaller entrypoint
+├── setsweep-sidecar.spec   PyInstaller spec
+├── scripts/build-sidecar.sh
+├── package.json            electron-forge config
+├── icon.icns               App icon (built from icon.iconset/)
+├── icon.iconset/
+├── resources/              Build artifacts (gitignored): sidecar binary + version.json
+└── out/                    Packaged .app (gitignored)
 ```
+
+## Deferred
+
+- **Code signing + DMG** once you want to share the `.app` with anyone else.
