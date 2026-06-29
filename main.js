@@ -4,6 +4,7 @@
 
 const { app, BrowserWindow, Menu, dialog, shell, ipcMain } = require('electron');
 const { spawn } = require('child_process');
+const fs = require('fs');
 const net = require('net');
 const path = require('path');
 
@@ -13,6 +14,20 @@ let serverProc = null;
 let serverPort = null;
 let mainWindow = null;
 let splashWindow = null;
+let sidecarLog = null;
+
+function openSidecarLog() {
+  const logDir = app.getPath('logs');
+  fs.mkdirSync(logDir, { recursive: true });
+  const stream = fs.createWriteStream(path.join(logDir, 'sidecar.log'), { flags: 'a' });
+  stream.write(`\n--- ${new Date().toISOString()} launch ---\n`);
+  return stream;
+}
+
+function logSidecar(chunk) {
+  process.stdout.write(`[setsweep] ${chunk}`);
+  if (sidecarLog && !sidecarLog.destroyed) sidecarLog.write(chunk);
+}
 
 function waitForPort(port, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
@@ -89,8 +104,8 @@ function startSidecar(port) {
       ));
     });
 
-    proc.stdout.on('data', (b) => process.stdout.write(`[setsweep] ${b}`));
-    proc.stderr.on('data', (b) => process.stderr.write(`[setsweep] ${b}`));
+    proc.stdout.on('data', (b) => logSidecar(b));
+    proc.stderr.on('data', (b) => logSidecar(b));
 
     proc.on('exit', (code, sig) => {
       console.log(`[setsweep] sidecar exited code=${code} sig=${sig}`);
@@ -110,6 +125,28 @@ function startSidecar(port) {
       })
       .catch(fail);
   });
+}
+
+function windowStatePath() {
+  return path.join(app.getPath('userData'), 'window-state.json');
+}
+
+function loadWindowState() {
+  try {
+    const raw = fs.readFileSync(windowStatePath(), 'utf8');
+    const state = JSON.parse(raw);
+    if (state && typeof state.width === 'number' && typeof state.height === 'number') {
+      return state;
+    }
+  } catch { /* first launch */ }
+  return { width: 1560, height: 980, x: undefined, y: undefined };
+}
+
+function saveWindowState(win) {
+  if (!win || win.isDestroyed()) return;
+  try {
+    fs.writeFileSync(windowStatePath(), JSON.stringify(win.getBounds()));
+  } catch { /* non-fatal */ }
 }
 
 function createSplash() {
@@ -202,14 +239,15 @@ async function createWindow() {
   }
 
   createSplash();
+  sidecarLog = openSidecarLog();
 
   serverPort = await findFreePort();
   await startSidecar(serverPort);
 
+  const saved = loadWindowState();
   mainWindow = new BrowserWindow({
     title: 'Setsweep',
-    width: 1560,
-    height: 980,
+    ...saved,
     minWidth: 1100,
     minHeight: 700,
     show: false,
@@ -228,6 +266,7 @@ async function createWindow() {
   });
 
   await mainWindow.loadURL(`http://127.0.0.1:${serverPort}/`);
+  mainWindow.on('close', () => saveWindowState(mainWindow));
   mainWindow.on('closed', () => {
     mainWindow = null;
     killSidecar();
@@ -290,6 +329,7 @@ if (!gotLock) {
   app.on('before-quit', () => {
     app.isQuitting = true;
     killSidecar();
+    if (sidecarLog && !sidecarLog.destroyed) sidecarLog.end();
   });
 
   // Single-window app: closing the window quits and tears down the sidecar.
