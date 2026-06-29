@@ -21,7 +21,9 @@ function waitForPort(port, timeoutMs = 15000) {
       const done = (ok, err) => {
         sock.destroy();
         if (ok) return resolve();
-        if (Date.now() >= deadline) return reject(err || new Error('port wait timeout'));
+        if (Date.now() >= deadline) {
+          return reject(err || new Error('Timed out waiting for the setsweep server to start'));
+        }
         setTimeout(tryOnce, 150);
       };
       sock.setTimeout(500);
@@ -46,9 +48,15 @@ function findFreePort() {
   });
 }
 
-async function startSidecar(port) {
-  // PATH from a GUI launch on macOS doesn't include Homebrew/pyenv; widen it so
-  // `setsweep` resolves whether it's installed via brew, pyenv, or pipx.
+function killSidecar() {
+  if (serverProc && !serverProc.killed) {
+    try { serverProc.kill('SIGTERM'); } catch { /* already gone */ }
+  }
+  serverProc = null;
+  serverPort = null;
+}
+
+function startSidecar(port) {
   const PATH = [
     process.env.PATH || '',
     '/opt/homebrew/bin',
@@ -57,20 +65,50 @@ async function startSidecar(port) {
     path.join(process.env.HOME || '', '.pyenv/shims'),
   ].filter(Boolean).join(':');
 
-  const proc = spawn(SETSWEEP_CMD, ['--web', '--port', String(port), '--no-open'], {
-    env: { ...process.env, PATH, PYTHONUNBUFFERED: '1' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      killSidecar();
+      reject(err);
+    };
 
-  proc.stdout.on('data', (b) => process.stdout.write(`[setsweep] ${b}`));
-  proc.stderr.on('data', (b) => process.stderr.write(`[setsweep] ${b}`));
-  proc.on('exit', (code, sig) => {
-    console.log(`[setsweep] sidecar exited code=${code} sig=${sig}`);
-    if (!app.isQuitting) app.quit();
-  });
+    const proc = spawn(SETSWEEP_CMD, ['--web', '--port', String(port), '--no-open'], {
+      env: { ...process.env, PATH, PYTHONUNBUFFERED: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
 
-  await waitForPort(port);
-  return proc;
+    serverProc = proc;
+
+    proc.on('error', (err) => {
+      fail(new Error(
+        `Could not launch setsweep (${SETSWEEP_CMD}): ${err.message}\n\n` +
+        'Is `setsweep` on PATH? Try: which setsweep'
+      ));
+    });
+
+    proc.stdout.on('data', (b) => process.stdout.write(`[setsweep] ${b}`));
+    proc.stderr.on('data', (b) => process.stderr.write(`[setsweep] ${b}`));
+
+    proc.on('exit', (code, sig) => {
+      console.log(`[setsweep] sidecar exited code=${code} sig=${sig}`);
+      serverProc = null;
+      if (!settled && !app.isQuitting) {
+        fail(new Error(`The setsweep server exited unexpectedly (code ${code}).`));
+        return;
+      }
+      if (!app.isQuitting) app.quit();
+    });
+
+    waitForPort(port)
+      .then(() => {
+        if (settled) return;
+        settled = true;
+        resolve(proc);
+      })
+      .catch(fail);
+  });
 }
 
 function buildMenu() {
@@ -113,8 +151,13 @@ function buildMenu() {
 }
 
 async function createWindow() {
+  if (mainWindow) {
+    mainWindow.focus();
+    return;
+  }
+
   serverPort = await findFreePort();
-  serverProc = await startSidecar(serverPort);
+  await startSidecar(serverPort);
 
   mainWindow = new BrowserWindow({
     title: 'Setsweep',
@@ -146,7 +189,10 @@ async function createWindow() {
   });
 
   mainWindow.loadURL(`http://127.0.0.1:${serverPort}/`);
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    killSidecar();
+  });
 }
 
 // IPC for folder picker (preload exposes this as window.pywebview.api.pick_folder).
@@ -185,19 +231,28 @@ if (!gotLock) {
       app.quit();
     }
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    app.on('activate', async () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        try {
+          await createWindow();
+        } catch (err) {
+          console.error('[shell] startup failed:', err);
+          dialog.showErrorBox('Setsweep failed to start',
+            `Could not launch the setsweep server.\n\n${err.message}\n\n` +
+            'Is `setsweep` on PATH? Try: which setsweep');
+          app.quit();
+        }
+      }
     });
   });
 
   app.on('before-quit', () => {
     app.isQuitting = true;
-    if (serverProc && !serverProc.killed) {
-      try { serverProc.kill('SIGTERM'); } catch {}
-    }
+    killSidecar();
   });
 
+  // Single-window app: closing the window quits and tears down the sidecar.
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
+    app.quit();
   });
 }
