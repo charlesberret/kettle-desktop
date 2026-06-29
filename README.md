@@ -29,7 +29,7 @@ npm run package         # → out/Setsweep-darwin-arm64/Setsweep.app
 npm run make            # → out/make/zip/darwin/arm64/Setsweep-*.zip
 ```
 
-`build:sidecar` reads the setsweep source from `SETSWEEP_SRC` (default `~/Seafile/Code/active/setsweep`) and builds with `SETSWEEP_VENV` (default `~/.setsweep-venv`).
+`build:sidecar` reads the setsweep source from `SETSWEEP_SRC` (default `~/Seafile/Code/active/setsweep`). Python comes from `SETSWEEP_VENV`, `~/.setsweep-venv`, or a local `.build-venv` created on first build.
 
 The packaged `.app` is self-contained: no Python install required. Project registry and settings live under `~/Library/Application Support/Setsweep/`. Sidecar logs: `~/Library/Logs/Setsweep/sidecar.log`.
 

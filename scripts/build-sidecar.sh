@@ -4,7 +4,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SETSWEEP_SRC="${SETSWEEP_SRC:-$HOME/Seafile/Code/active/setsweep}"
-SETSWEEP_VENV="${SETSWEEP_VENV:-$HOME/.setsweep-venv}"
 
 if [[ ! -d "$SETSWEEP_SRC" ]]; then
   echo "error: setsweep source not found at $SETSWEEP_SRC" >&2
@@ -12,27 +11,36 @@ if [[ ! -d "$SETSWEEP_SRC" ]]; then
   exit 1
 fi
 
-if [[ ! -x "$SETSWEEP_VENV/bin/python" ]]; then
-  echo "error: venv not found at $SETSWEEP_VENV" >&2
-  echo "Create one with: python3 -m venv $SETSWEEP_VENV && $SETSWEEP_VENV/bin/pip install -e $SETSWEEP_SRC" >&2
-  exit 1
+if [[ -n "${SETSWEEP_VENV:-}" && -x "$SETSWEEP_VENV/bin/python" ]]; then
+  VENV="$SETSWEEP_VENV"
+elif [[ -x "${HOME}/.setsweep-venv/bin/python" ]]; then
+  VENV="${HOME}/.setsweep-venv"
+else
+  VENV="$ROOT/.build-venv"
 fi
 
-echo "[build-sidecar] setsweep source: $SETSWEEP_SRC"
-echo "[build-sidecar] venv: $SETSWEEP_VENV"
+if [[ ! -x "$VENV/bin/python" ]]; then
+  echo "[build-sidecar] creating venv at $VENV"
+  python3 -m venv "$VENV"
+fi
 
-"$SETSWEEP_VENV/bin/pip" install -q -e "$SETSWEEP_SRC"
-"$SETSWEEP_VENV/bin/pip" install -q pyinstaller
+PYTHON="$VENV/bin/python"
+
+echo "[build-sidecar] setsweep source: $SETSWEEP_SRC"
+echo "[build-sidecar] venv: $VENV"
+
+"$PYTHON" -m pip install -q -e "$SETSWEEP_SRC"
+"$PYTHON" -m pip install -q pyinstaller
 
 export SETSWEEP_SRC
 cd "$ROOT"
-"$SETSWEEP_VENV/bin/pyinstaller" --noconfirm --clean setsweep-sidecar.spec
+"$PYTHON" -m PyInstaller --noconfirm --clean setsweep-sidecar.spec
 
 mkdir -p "$ROOT/resources"
 rm -rf "$ROOT/resources/setsweep-sidecar"
 cp -R "$ROOT/dist/setsweep-sidecar" "$ROOT/resources/setsweep-sidecar"
 
-SETSWEEP_VER="$("$SETSWEEP_VENV/bin/python" -c "import importlib.metadata as m; print(m.version('setsweep'))")"
+SETSWEEP_VER="$("$PYTHON" -c "import importlib.metadata as m; print(m.version('setsweep'))")"
 SHELL_VER="$(node -p "require('$ROOT/package.json').version")"
 BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
