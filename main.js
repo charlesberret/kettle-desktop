@@ -12,6 +12,7 @@ const SETSWEEP_CMD = process.env.SETSWEEP_CMD || 'setsweep';
 let serverProc = null;
 let serverPort = null;
 let mainWindow = null;
+let splashWindow = null;
 
 function waitForPort(port, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
@@ -111,6 +112,27 @@ function startSidecar(port) {
   });
 }
 
+function createSplash() {
+  splashWindow = new BrowserWindow({
+    width: 320,
+    height: 140,
+    frame: false,
+    resizable: false,
+    center: true,
+    show: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  splashWindow.loadFile(path.join(__dirname, 'splash.html'));
+  splashWindow.once('ready-to-show', () => splashWindow?.show());
+}
+
+function closeSplash() {
+  if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
+  splashWindow = null;
+}
+
 function buildMenu() {
   const openSettings = () => mainWindow && mainWindow.webContents.executeJavaScript(
     'window.openAdmin && openAdmin()'
@@ -150,11 +172,36 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+function wireNavigation(win) {
+  const isLocal = (u) => {
+    try {
+      const url = new URL(u);
+      return url.hostname === '127.0.0.1' || url.hostname === 'localhost';
+    } catch { return false; }
+  };
+
+  win.webContents.on('will-navigate', (e, url) => {
+    if (!isLocal(url)) { e.preventDefault(); shell.openExternal(url); }
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (!isLocal(url)) { shell.openExternal(url); return { action: 'deny' }; }
+    return { action: 'allow' };
+  });
+
+  win.webContents.on('did-finish-load', () => {
+    win.webContents.executeJavaScript(
+      "window.dispatchEvent(new Event('pywebviewready'));"
+    ).catch(() => {});
+  });
+}
+
 async function createWindow() {
   if (mainWindow) {
     mainWindow.focus();
     return;
   }
+
+  createSplash();
 
   serverPort = await findFreePort();
   await startSidecar(serverPort);
@@ -165,6 +212,7 @@ async function createWindow() {
     height: 980,
     minWidth: 1100,
     minHeight: 700,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -172,23 +220,14 @@ async function createWindow() {
     },
   });
 
-  // Off-localhost links bounce to the system browser — never navigate the shell.
-  const isLocal = (u) => {
-    try {
-      const url = new URL(u);
-      return url.hostname === '127.0.0.1' || url.hostname === 'localhost';
-    } catch { return false; }
-  };
+  wireNavigation(mainWindow);
 
-  mainWindow.webContents.on('will-navigate', (e, url) => {
-    if (!isLocal(url)) { e.preventDefault(); shell.openExternal(url); }
-  });
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (!isLocal(url)) { shell.openExternal(url); return { action: 'deny' }; }
-    return { action: 'allow' };
+  mainWindow.once('ready-to-show', () => {
+    closeSplash();
+    mainWindow.show();
   });
 
-  mainWindow.loadURL(`http://127.0.0.1:${serverPort}/`);
+  await mainWindow.loadURL(`http://127.0.0.1:${serverPort}/`);
   mainWindow.on('closed', () => {
     mainWindow = null;
     killSidecar();
@@ -225,6 +264,7 @@ if (!gotLock) {
       console.log(`[shell] window loaded http://127.0.0.1:${serverPort}/`);
     } catch (err) {
       console.error('[shell] startup failed:', err);
+      closeSplash();
       dialog.showErrorBox('Setsweep failed to start',
         `Could not launch the setsweep server.\n\n${err.message}\n\n` +
         `Is \`setsweep\` on PATH? Try: which setsweep`);
@@ -237,6 +277,7 @@ if (!gotLock) {
           await createWindow();
         } catch (err) {
           console.error('[shell] startup failed:', err);
+          closeSplash();
           dialog.showErrorBox('Setsweep failed to start',
             `Could not launch the setsweep server.\n\n${err.message}\n\n` +
             'Is `setsweep` on PATH? Try: which setsweep');
