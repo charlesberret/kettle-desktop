@@ -121,6 +121,20 @@ function killSidecar() {
   serverPort = null;
 }
 
+function quitApp() {
+  app.isQuitting = true;
+  app.quit();
+}
+
+function sidecarLogPath() {
+  return path.join(app.getPath('logs'), 'sidecar.log');
+}
+
+function showSidecarCrashDialog(code) {
+  dialog.showErrorBox('Setsweep server stopped',
+    `The setsweep server exited unexpectedly (code ${code}).\n\nLog: ${sidecarLogPath()}`);
+}
+
 function startSidecar(port) {
   const { cmd, args, bundled } = resolveSidecar();
   const spawnArgs = [...args, '--port', String(port), '--no-open'];
@@ -158,7 +172,10 @@ function startSidecar(port) {
         fail(new Error(`The setsweep server exited unexpectedly (code ${code}).`));
         return;
       }
-      if (!app.isQuitting) app.quit();
+      if (!app.isQuitting) {
+        showSidecarCrashDialog(code);
+        quitApp();
+      }
     });
 
     waitForPort(port)
@@ -253,20 +270,26 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-function wireNavigation(win) {
-  const isLocal = (u) => {
+function wireNavigation(win, port) {
+  const isSidecarUrl = (u) => {
     try {
       const url = new URL(u);
-      return url.hostname === '127.0.0.1' || url.hostname === 'localhost';
+      const local = url.hostname === '127.0.0.1' || url.hostname === 'localhost';
+      if (!local) return false;
+      const p = url.port ? parseInt(url.port, 10) : (url.protocol === 'https:' ? 443 : 80);
+      return p === port;
     } catch { return false; }
   };
 
   win.webContents.on('will-navigate', (e, url) => {
-    if (!isLocal(url)) { e.preventDefault(); shell.openExternal(url); }
+    if (isSidecarUrl(url)) return;
+    e.preventDefault();
+    shell.openExternal(url);
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (!isLocal(url)) { shell.openExternal(url); return { action: 'deny' }; }
-    return { action: 'allow' };
+    if (isSidecarUrl(url)) return { action: 'allow' };
+    shell.openExternal(url);
+    return { action: 'deny' };
   });
 
   win.webContents.on('did-finish-load', () => {
@@ -277,6 +300,7 @@ function wireNavigation(win) {
 }
 
 async function createWindow() {
+  if (app.isQuitting) return;
   if (mainWindow) {
     mainWindow.focus();
     return;
@@ -302,7 +326,7 @@ async function createWindow() {
     },
   });
 
-  wireNavigation(mainWindow);
+  wireNavigation(mainWindow, serverPort);
 
   mainWindow.once('ready-to-show', () => {
     closeSplash();
@@ -313,6 +337,7 @@ async function createWindow() {
   mainWindow.on('close', () => saveWindowState(mainWindow));
   mainWindow.on('closed', () => {
     mainWindow = null;
+    app.isQuitting = true;
     killSidecar();
   });
 }
@@ -321,7 +346,7 @@ function showStartupError(err) {
   closeSplash();
   const bundled = resolveSidecar().bundled;
   const extra = bundled
-    ? `Sidecar log: ${path.join(app.getPath('logs'), 'sidecar.log')}`
+    ? `Sidecar log: ${sidecarLogPath()}`
     : 'Is `setsweep` on PATH? Try: which setsweep';
   dialog.showErrorBox('Setsweep failed to start',
     `Could not launch the setsweep server.\n\n${err.message}\n\n${extra}`);
@@ -366,16 +391,17 @@ if (!gotLock) {
     } catch (err) {
       console.error('[shell] startup failed:', err);
       showStartupError(err);
-      app.quit();
+      quitApp();
     }
 
     app.on('activate', async () => {
+      if (app.isQuitting) return;
       if (BrowserWindow.getAllWindows().length === 0) {
         try {
           await createWindow();
         } catch (err) {
           showStartupError(err);
-          app.quit();
+          quitApp();
         }
       }
     });
@@ -389,6 +415,6 @@ if (!gotLock) {
 
   // Single-window app: closing the window quits and tears down the sidecar.
   app.on('window-all-closed', () => {
-    app.quit();
+    quitApp();
   });
 }
