@@ -1,0 +1,33 @@
+{
+  "name": "setsweep-desktop",
+  "version": "0.1.0",
+  "description": "Electron shell for setsweep — wraps the local Python server in a native macOS window.",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.5.0",
+    "@electron-forge/maker-dmg": "^7.5.0",
+    "@electron-forge/maker-zip": "^7.5.0",
+    "electron": "^32.0.0"
+  },
+  "config": {
+    "forge": {
+      "packagerConfig": {
+        "name": "Setsweep",
+        "executableName": "Setsweep",
+        "appBundleId": "net.charlesberret.setsweep",
+        "icon": "icon",
+        "osxSign": false,
+        "osxNotarize": false
+      },
+      "makers": [
+        { "name": "@electron-forge/maker-zip", "platforms": ["darwin"] }
+      ]
+    }
+  }
+}
