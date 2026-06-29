@@ -32,7 +32,7 @@ npm run make            # → out/make/zip/darwin/arm64/Setsweep-*.zip
 
 `build:sidecar` reads the setsweep source from `SETSWEEP_SRC` (default `~/Seafile/Code/active/setsweep`). Python comes from `SETSWEEP_VENV`, `~/.setsweep-venv`, or a local `.build-venv` created on first build.
 
-The packaged `.app` is self-contained: no Python install required. Project registry and settings live under `~/Library/Application Support/Setsweep/`. Sidecar logs: `~/Library/Logs/Setsweep/sidecar.log`.
+The packaged `.app` is self-contained: no Python install required. Project registry and settings live under `~/Library/Application Support/Setsweep/`. On first launch, if `projects.json` is missing, the shell copies it from `SETSWEEP_SRC/projects.json` (default `~/Seafile/Code/active/setsweep`) or `SETSWEEP_PROJECTS_SRC`. Sidecar logs: `~/Library/Logs/Setsweep/sidecar.log`.
 
 No code signing or notarization yet. macOS Gatekeeper may block on first launch — right-click → Open, or run `npm run install:app` (strips quarantine after copy).
 
