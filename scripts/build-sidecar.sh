@@ -43,13 +43,39 @@ cp -R "$ROOT/dist/setsweep-sidecar" "$ROOT/resources/setsweep-sidecar"
 SETSWEEP_VER="$("$PYTHON" -c "import importlib.metadata as m; print(m.version('setsweep'))")"
 SHELL_VER="$(node -p "require('$ROOT/package.json').version")"
 BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+PYTHON_VER="$("$PYTHON" -c "import platform; print(platform.python_version())")"
 
-cat > "$ROOT/resources/version.json" <<EOF
-{
-  "shell": "$SHELL_VER",
-  "setsweep": "$SETSWEEP_VER",
-  "built": "$BUILT"
+SETSWEEP_COMMIT="unknown"
+SETSWEEP_DIRTY="unknown"
+if git -C "$SETSWEEP_SRC" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  SETSWEEP_COMMIT="$(git -C "$SETSWEEP_SRC" rev-parse --short=12 HEAD)"
+  if [[ -n "$(git -C "$SETSWEEP_SRC" status --porcelain)" ]]; then
+    SETSWEEP_DIRTY="true"
+  else
+    SETSWEEP_DIRTY="false"
+  fi
+fi
+
+export BUILT PYTHON_VER ROOT SETSWEEP_COMMIT SETSWEEP_DIRTY SETSWEEP_SRC SETSWEEP_VER SHELL_VER
+"$PYTHON" - <<'PY'
+import json
+import os
+from pathlib import Path
+
+dirty = os.environ["SETSWEEP_DIRTY"]
+payload = {
+    "shell": os.environ["SHELL_VER"],
+    "setsweep": os.environ["SETSWEEP_VER"],
+    "built": os.environ["BUILT"],
+    "python": os.environ["PYTHON_VER"],
+    "setsweepSource": os.environ["SETSWEEP_SRC"],
+    "setsweepCommit": os.environ["SETSWEEP_COMMIT"],
+    "setsweepDirty": None if dirty == "unknown" else dirty == "true",
 }
-EOF
+
+(Path(os.environ["ROOT"]) / "resources" / "version.json").write_text(
+    f"{json.dumps(payload, indent=2)}\n"
+)
+PY
 
 echo "[build-sidecar] → resources/setsweep-sidecar/ (setsweep $SETSWEEP_VER, shell $SHELL_VER)"
