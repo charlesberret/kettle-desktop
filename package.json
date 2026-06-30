@@ -6,6 +6,9 @@
   "private": true,
   "scripts": {
     "start": "electron-forge start",
+    "check": "node --check main.js && node --check preload.js && node --check scripts/smoke-sidecar.js",
+    "smoke:sidecar": "node scripts/smoke-sidecar.js",
+    "test": "npm run check && npm run smoke:sidecar",
     "build:sidecar": "bash scripts/build-sidecar.sh",
     "package": "npm run build:sidecar && electron-forge package",
     "install:app": "npm run package && bash scripts/install-app.sh",
