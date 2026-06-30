@@ -422,6 +422,8 @@ async function createWindow() {
     ...saved,
     minWidth: 1100,
     minHeight: 700,
+    movable: true,
+    resizable: true,
     show: false,
     backgroundColor: '#000000',
     webPreferences: {
