@@ -3,11 +3,15 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$ROOT/out/Setsweep-darwin-arm64/Setsweep.app"
+SRC="${SETSWEEP_APP_SRC:-}"
 DEST="${SETSWEEP_APP_DEST:-$HOME/Applications/Setsweep.app}"
 
+if [[ -z "$SRC" ]]; then
+  SRC="$(find "$ROOT/out" -path "*/Setsweep.app" -type d -print 2>/dev/null | sort | head -n 1 || true)"
+fi
+
 if [[ ! -d "$SRC" ]]; then
-  echo "error: packaged app not found at $SRC" >&2
+  echo "error: packaged app not found under $ROOT/out" >&2
   echo "Run: npm run package" >&2
   exit 1
 fi
