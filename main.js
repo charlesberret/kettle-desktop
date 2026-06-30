@@ -5,6 +5,7 @@
 const { app, BrowserWindow, Menu, dialog, shell, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const http = require('http');
 const net = require('net');
 const path = require('path');
 
@@ -113,24 +114,56 @@ function logSidecar(chunk) {
   if (sidecarLog && !sidecarLog.destroyed) sidecarLog.write(chunk);
 }
 
-function waitForPort(port, timeoutMs = 15000) {
+function pingSidecar(port) {
+  return new Promise((resolve, reject) => {
+    const req = http.get({
+      hostname: '127.0.0.1',
+      port,
+      path: '/api/ping',
+      timeout: 500,
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`Sidecar ping returned HTTP ${res.statusCode}`));
+          return;
+        }
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          if (body.app === 'setsweep' && body.port === port) {
+            resolve(body);
+            return;
+          }
+          reject(new Error('Sidecar ping did not identify Setsweep'));
+        } catch (err) {
+          reject(new Error(`Could not parse sidecar ping: ${err.message}`));
+        }
+      });
+    });
+    req.on('timeout', () => {
+      req.destroy(new Error('Timed out waiting for sidecar ping'));
+    });
+    req.on('error', reject);
+  });
+}
+
+function waitForSidecar(port, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
+    let lastErr = null;
     const tryOnce = () => {
-      const sock = new net.Socket();
-      const done = (ok, err) => {
-        sock.destroy();
-        if (ok) return resolve();
-        if (Date.now() >= deadline) {
-          return reject(err || new Error('Timed out waiting for the setsweep server to start'));
-        }
-        setTimeout(tryOnce, 150);
-      };
-      sock.setTimeout(500);
-      sock.once('connect', () => done(true));
-      sock.once('timeout', () => done(false));
-      sock.once('error', (e) => done(false, e));
-      sock.connect(port, '127.0.0.1');
+      pingSidecar(port)
+        .then(resolve)
+        .catch((err) => {
+          lastErr = err;
+          if (Date.now() >= deadline) {
+            const detail = lastErr ? `: ${lastErr.message}` : '';
+            reject(new Error(`Timed out waiting for Setsweep /api/ping${detail}`));
+            return;
+          }
+          setTimeout(tryOnce, 150);
+        });
     };
     tryOnce();
   });
@@ -213,7 +246,7 @@ function startSidecar(port) {
       }
     });
 
-    waitForPort(port)
+    waitForSidecar(port)
       .then(() => {
         if (settled) return;
         settled = true;
