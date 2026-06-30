@@ -4,6 +4,9 @@
   "description": "Electron shell for setsweep — wraps the local Python server in a native macOS window.",
   "main": "main.js",
   "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "start": "electron-forge start",
     "check": "node --check main.js && node --check preload.js && node --check scripts/smoke-sidecar.js",
@@ -15,10 +18,10 @@
     "make": "npm run build:sidecar && npm run smoke:sidecar && electron-forge make"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.5.0",
-    "@electron-forge/maker-dmg": "^7.5.0",
-    "@electron-forge/maker-zip": "^7.5.0",
-    "electron": "^32.0.0"
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/maker-dmg": "^7.11.2",
+    "@electron-forge/maker-zip": "^7.11.2",
+    "electron": "^42.5.1"
   },
   "config": {
     "forge": {
@@ -35,7 +38,12 @@
         ]
       },
       "makers": [
-        { "name": "@electron-forge/maker-zip", "platforms": ["darwin"] }
+        {
+          "name": "@electron-forge/maker-zip",
+          "platforms": [
+            "darwin"
+          ]
+        }
       ]
     }
   }
