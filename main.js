@@ -9,6 +9,7 @@ const net = require('net');
 const path = require('path');
 
 const SETSWEEP_CMD = process.env.SETSWEEP_CMD || 'setsweep';
+const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['https:', 'http:', 'mailto:']);
 
 let serverProc = null;
 let serverPort = null;
@@ -304,25 +305,57 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+function parseUrl(value) {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
+function isSidecarUrl(value, port) {
+  const url = parseUrl(value);
+  if (!url) return false;
+  if (url.protocol !== 'http:') return false;
+  if (url.hostname !== '127.0.0.1' && url.hostname !== 'localhost') return false;
+  const urlPort = url.port ? parseInt(url.port, 10) : 80;
+  return urlPort === port;
+}
+
+function openExternalUrl(value) {
+  const url = parseUrl(value);
+  if (!url || !ALLOWED_EXTERNAL_PROTOCOLS.has(url.protocol)) {
+    console.warn(`[shell] blocked external navigation to ${value}`);
+    return;
+  }
+  shell.openExternal(url.toString()).catch((err) => {
+    console.warn(`[shell] failed to open external URL ${url.toString()}:`, err.message);
+  });
+}
+
 function wireNavigation(win, port) {
-  const isSidecarUrl = (u) => {
-    try {
-      const url = new URL(u);
-      const local = url.hostname === '127.0.0.1' || url.hostname === 'localhost';
-      if (!local) return false;
-      const p = url.port ? parseInt(url.port, 10) : (url.protocol === 'https:' ? 443 : 80);
-      return p === port;
-    } catch { return false; }
-  };
+  win.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
+    console.warn(`[shell] denied permission request: ${permission}`);
+    callback(false);
+  });
+
+  win.webContents.on('will-attach-webview', (e) => {
+    e.preventDefault();
+  });
 
   win.webContents.on('will-navigate', (e, url) => {
-    if (isSidecarUrl(url)) return;
+    if (isSidecarUrl(url, port)) return;
     e.preventDefault();
-    shell.openExternal(url);
+    openExternalUrl(url);
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isSidecarUrl(url)) return { action: 'allow' };
-    shell.openExternal(url);
+    if (isSidecarUrl(url, port)) {
+      win.loadURL(url).catch((err) => {
+        console.warn(`[shell] failed to load sidecar URL ${url}:`, err.message);
+      });
+      return { action: 'deny' };
+    }
+    openExternalUrl(url);
     return { action: 'deny' };
   });
 
