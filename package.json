@@ -13,8 +13,11 @@
     "smoke:sidecar": "node scripts/smoke-sidecar.js",
     "test": "npm run check && npm run smoke:sidecar",
     "build:sidecar": "bash scripts/build-sidecar.sh",
+    "package:shell": "npm run smoke:sidecar && electron-forge package",
     "package": "npm run build:sidecar && npm run smoke:sidecar && electron-forge package",
     "install:app": "npm run package && bash scripts/install-app.sh",
+    "reinstall": "npm run install:app",
+    "reinstall:shell": "npm run package:shell && bash scripts/install-app.sh",
     "make": "npm run build:sidecar && npm run smoke:sidecar && electron-forge make"
   },
   "devDependencies": {
@@ -25,6 +28,9 @@
   },
   "config": {
     "forge": {
+      "hooks": {
+        "prePackage": "node scripts/patch-electron-extract.js"
+      },
       "packagerConfig": {
         "name": "Setsweep",
         "executableName": "Setsweep",
@@ -32,6 +38,12 @@
         "icon": "icon",
         "osxSign": false,
         "osxNotarize": false,
+        "ignore": [
+          "^/\\.build-venv($|/)",
+          "^/build($|/)",
+          "^/dist($|/)",
+          "^/assets($|/)"
+        ],
         "extraResource": [
           "resources/setsweep-sidecar",
           "resources/version.json"

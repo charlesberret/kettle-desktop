@@ -4,6 +4,7 @@ build/
 dist/
 .build-venv/
 .DS_Store
+.cursor/
 
 # PyInstaller sidecar (built by scripts/build-sidecar.sh)
 resources/setsweep-sidecar/

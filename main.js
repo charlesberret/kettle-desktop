@@ -2,7 +2,7 @@
 // as a sidecar, waits for it to bind, then loads its localhost URL in a BrowserWindow.
 // The frontend (static/index.html) is unchanged — preload.js shims window.pywebview.api.
 
-const { app, BrowserWindow, Menu, dialog, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, ipcMain, nativeImage } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
@@ -18,6 +18,23 @@ let mainWindow = null;
 let splashWindow = null;
 let sidecarLog = null;
 let versionInfo = null;
+
+function resolveAppIconPath() {
+  const bundled = path.join(process.resourcesPath || '', 'icon.icns');
+  const dev = path.join(__dirname, 'icon.icns');
+  if (bundled && fs.existsSync(bundled)) return bundled;
+  if (fs.existsSync(dev)) return dev;
+  return null;
+}
+
+/** Dock icon in dev (`npm start`); packaged builds use icon.icns via electron-forge. */
+function setAppIcon() {
+  const iconPath = resolveAppIconPath();
+  if (!iconPath) return;
+  const img = nativeImage.createFromPath(iconPath);
+  if (img.isEmpty()) return;
+  if (process.platform === 'darwin' && app.dock) app.dock.setIcon(img);
+}
 
 function loadVersionInfo() {
   const candidates = [
@@ -488,6 +505,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    setAppIcon();
     versionInfo = loadVersionInfo();
     app.setAboutPanelOptions({
       applicationName: 'Setsweep',
