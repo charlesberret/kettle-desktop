@@ -69,7 +69,7 @@ function resolveProjectsPath() {
 
 function registryImportSources() {
   const srcRoot = process.env.SETSWEEP_SRC
-    || path.join(process.env.HOME || '', 'Seafile/Code/active/setsweep');
+    || path.join(process.env.HOME || '', 'Repos/setsweep-core');
   return [
     process.env.SETSWEEP_PROJECTS_SRC,
     path.join(srcRoot, 'projects.json'),

@@ -3,11 +3,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SETSWEEP_SRC="${SETSWEEP_SRC:-$HOME/Seafile/Code/active/setsweep}"
+SETSWEEP_SRC="${SETSWEEP_SRC:-$HOME/Repos/setsweep-core}"
 
 if [[ ! -d "$SETSWEEP_SRC" ]]; then
-  echo "error: setsweep source not found at $SETSWEEP_SRC" >&2
-  echo "Set SETSWEEP_SRC to the setsweep repo and retry." >&2
+  echo "error: setsweep-core source not found at $SETSWEEP_SRC" >&2
+  echo "Set SETSWEEP_SRC to the setsweep-core repo and retry." >&2
   exit 1
 fi
 

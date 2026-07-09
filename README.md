@@ -1,6 +1,6 @@
 # setsweep-desktop
 
-Electron shell for [setsweep](../../Seafile/Code/active/setsweep/), the desk/review tool. Wraps the Python server in a native macOS window — the `.app` you double-click instead of running `setsweep` in a terminal.
+Electron shell for [setsweep-core](../setsweep-core/), the desk/review tool. Wraps the Python server in a native macOS window — the `.app` you double-click instead of running `setsweep` in a terminal. Host adapters (VS Code/Cursor, later Obsidian/Sublime) live in [`setsweep-plugin`](../setsweep-plugin/).
 
 ## Architecture
 
@@ -17,7 +17,7 @@ npm install        # one-time
 npm start          # electron-forge start; requires setsweep on PATH
 ```
 
-For dev, install setsweep from the parent repo (`pip install -e ~/Seafile/Code/active/setsweep`). The shell widens PATH to include Homebrew, pyenv shims, and `~/.local/bin` so a GUI launch resolves `setsweep` the same way a terminal does.
+For dev, install setsweep from core (`pip install -e ~/Repos/setsweep-core`). The shell widens PATH to include Homebrew, pyenv shims, and `~/.local/bin` so a GUI launch resolves `setsweep` the same way a terminal does.
 
 Override the sidecar binary with `SETSWEEP_CMD=/path/to/setsweep`.
 
@@ -31,9 +31,9 @@ npm run install:app     # package + copy to ~/Applications/Setsweep.app (Spotlig
 npm run make            # → out/make/zip/darwin/arm64/Setsweep-*.zip
 ```
 
-`build:sidecar` reads the setsweep source from `SETSWEEP_SRC` (default `~/Seafile/Code/active/setsweep`). Python comes from `SETSWEEP_VENV`, `~/.setsweep-venv`, or a local `.build-venv` created on first build.
+`build:sidecar` reads the setsweep-core source from `SETSWEEP_SRC` (default `~/Repos/setsweep-core`). Python comes from `SETSWEEP_VENV`, `~/.setsweep-venv`, or a local `.build-venv` created on first build.
 
-The packaged `.app` is self-contained: no Python install required. Project registry and settings live under `~/Library/Application Support/Setsweep/`. On first launch, if `projects.json` is missing, the shell copies it from `SETSWEEP_SRC/projects.json` (default `~/Seafile/Code/active/setsweep`) or `SETSWEEP_PROJECTS_SRC`. Sidecar logs: `~/Library/Logs/Setsweep/sidecar.log`.
+The packaged `.app` is self-contained: no Python install required. Project registry and settings live under `~/Library/Application Support/Setsweep/`. On first launch, if `projects.json` is missing, the shell copies it from `SETSWEEP_SRC/projects.json` (default `~/Repos/setsweep-core`) or `SETSWEEP_PROJECTS_SRC`. Sidecar logs: `~/Library/Logs/Setsweep/sidecar.log`.
 
 No code signing or notarization yet. macOS Gatekeeper may block on first launch — right-click → Open, or run `npm run install:app` (strips quarantine after copy).
 
