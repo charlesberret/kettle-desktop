@@ -186,6 +186,9 @@ function waitForSidecar(port, timeoutMs = 15000) {
   });
 }
 
+/** Canonical setsweep-core default — prefer this so the plugin can attach without discovery. */
+const DEFAULT_CORE_PORT = 4242;
+
 function findFreePort() {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
@@ -196,6 +199,27 @@ function findFreePort() {
       srv.close(() => resolve(port));
     });
   });
+}
+
+function isPortFree(port) {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.once('error', () => resolve(false));
+    srv.listen(port, '127.0.0.1', () => {
+      srv.close(() => resolve(true));
+    });
+  });
+}
+
+/**
+ * Prefer 4242 when free so desktop and plugin share one well-known port.
+ * If something already holds 4242 (CLI `setsweep --web`, another app), fall back
+ * to an ephemeral port — plugin can still find us via ~/.cache/setsweep/server.json.
+ */
+async function chooseSidecarPort() {
+  if (await isPortFree(DEFAULT_CORE_PORT)) return DEFAULT_CORE_PORT;
+  return findFreePort();
 }
 
 function killSidecar() {
@@ -430,7 +454,7 @@ async function createWindow() {
   sidecarLog = openSidecarLog();
   ensureProjectsRegistry();
 
-  serverPort = await findFreePort();
+  serverPort = await chooseSidecarPort();
   await startSidecar(serverPort);
 
   const saved = loadWindowState();
