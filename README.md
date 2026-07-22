@@ -12,7 +12,8 @@ distribution work package is brief 15 there (`docs/briefs/15-desktop-distributio
   `setsweep-core/static/index.html` (and themes, marked, purify) that the browser and the
   Python sidecar serve. `preload.js` only shims `window.pywebview.api.pick_folder` for the
   native folder dialog. **Polish the web UI in core once** — desktop picks it up on the next
-  `setsweep --web` (dev) or `npm run build:sidecar` (packaged). Do not fork styles into this repo.
+  `setsweep --web` (dev) or `npm run build:sidecar` (packaged). Founding / add-project live
+  in core static (brief 22); never add an Electron-only wizard. Do not fork styles here.
 - **External-link interception.** Off-localhost URLs open in the default browser via `shell.openExternal`.
 - **Single-instance lock.** Second launches focus the existing window.
 - **Clean shutdown.** Closing the window or quitting kills the Python sidecar.
