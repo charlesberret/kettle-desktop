@@ -1,6 +1,7 @@
 # Security policy
 
-Kettle Desktop is pre-1.0. Security fixes target the latest release and `main`.
+Kettle Desktop is pre-1.0. Until releases begin, security fixes target the
+latest commit on `main`.
 
 Do not open a public issue for a vulnerability. Use GitHub private vulnerability
 reporting for

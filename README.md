@@ -39,7 +39,7 @@ Requirements:
   [kettle-core](https://github.com/charlesberret/kettle-core)
 
 ```sh
-npm install
+npm ci
 npm test
 npm start
 ```
@@ -54,12 +54,11 @@ sidecar.
 ## Package locally
 
 ```sh
-npm run build:sidecar
-npm run smoke:sidecar
 npm run package
 ```
 
-`build:sidecar` reads `../kettle-core` by default. Override with
+`npm run package` builds the sidecar, smoke-tests it, and packages the app.
+The sidecar build reads `../kettle-core` by default. Override with
 `KETTLE_SRC=/path/to/kettle-core`. Python comes from `KETTLE_VENV`,
 `~/.kettle-venv`, a legacy Setsweep venv, or a local `.build-venv`.
 

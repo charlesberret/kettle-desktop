@@ -32,3 +32,12 @@ body:
     attributes:
       label: Diagnostics
       description: Include sanitized logs without private project paths or data.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, private Desk content, and personal paths.
+          required: true
+        - label: This is not a vulnerability report; I will follow SECURITY.md for those.
+          required: true

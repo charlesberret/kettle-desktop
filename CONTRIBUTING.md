@@ -8,7 +8,7 @@ viewport can inherit it.
 ## Setup
 
 ```sh
-npm install
+npm ci
 npm test
 ```
 
@@ -26,4 +26,5 @@ Use `npm start` for the Electron development window. It expects a compatible
 - Never weaken the clean-core release gate or stamp unknown provenance.
 
 By contributing, you agree that your contribution is licensed under the MIT
-License.
+License. Participation is governed by the
+[Kettle code of conduct](https://github.com/charlesberret/kettle/blob/main/CODE_OF_CONDUCT.md).
