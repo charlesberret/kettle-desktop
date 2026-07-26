@@ -1,23 +1,24 @@
-# PyInstaller spec for the bundled setsweep web-server sidecar.
-# Run via scripts/build-sidecar.sh (sets SETSWEEP_SRC to the setsweep repo).
+# PyInstaller spec for the bundled kettle web-server sidecar.
+# Run via scripts/build-sidecar.sh (sets KETTLE_SRC to the kettle repo).
 
 import os
 from pathlib import Path
 
 block_cipher = None
 
-setsweep_src = Path(os.environ["SETSWEEP_SRC"]).resolve()
+kettle_src = Path(os.environ["KETTLE_SRC"]).resolve()
 entry = Path(SPECPATH).resolve() / "sidecar_entry.py"
 
 a = Analysis(
     [str(entry)],
-    pathex=[str(setsweep_src)],
+    pathex=[str(kettle_src)],
     binaries=[],
     datas=[
-        (str(setsweep_src / "static"), "static"),
-        (str(setsweep_src / "kits"), "kits"),
+        (str(kettle_src / "static"), "static"),
+        (str(kettle_src / "kits"), "kits"),
+        (str(kettle_src / "pyproject.toml"), "."),
     ],
-    hiddenimports=["server", "runtime", "lineage", "kits"],
+    hiddenimports=["server", "kettle_contract", "runtime", "lineage", "kits"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -35,7 +36,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="setsweep-sidecar",
+    name="kettle-sidecar",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -56,5 +57,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="setsweep-sidecar",
+    name="kettle-sidecar",
 )

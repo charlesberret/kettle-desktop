@@ -5,7 +5,8 @@ dist/
 .build-venv/
 .DS_Store
 .cursor/
+*.prerewrite-bak
 
 # PyInstaller sidecar (built by scripts/build-sidecar.sh)
-resources/setsweep-sidecar/
+resources/kettle-sidecar/
 resources/version.json

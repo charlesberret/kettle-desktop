@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Copy the packaged Setsweep.app into ~/Applications for Spotlight / Raycast / Dock.
+# Copy the packaged Kettle.app into ~/Applications for Spotlight / Raycast / Dock.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="${SETSWEEP_APP_SRC:-}"
-DEST="${SETSWEEP_APP_DEST:-$HOME/Applications/Setsweep.app}"
+SRC="${KETTLE_APP_SRC:-}"
+DEST="${KETTLE_APP_DEST:-$HOME/Applications/Kettle.app}"
 
 if [[ -z "$SRC" ]]; then
-  SRC="$(find "$ROOT/out" -path "*/Setsweep.app" -type d -print 2>/dev/null | sort | head -n 1 || true)"
+  SRC="$(find "$ROOT/out" -path "*/Kettle.app" -type d -print 2>/dev/null | sort | head -n 1 || true)"
 fi
 
 if [[ ! -d "$SRC" ]]; then
@@ -32,4 +32,4 @@ VER="$DEST/Contents/Resources/version.json"
 if [[ -f "$VER" ]]; then
   echo "[install-app] $(cat "$VER")"
 fi
-echo "[install-app] done — launch Setsweep from ~/Applications or Spotlight"
+echo "[install-app] done — launch Kettle from ~/Applications or Spotlight"

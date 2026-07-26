@@ -1,18 +1,27 @@
 #!/usr/bin/env bash
-# Build the PyInstaller-bundled setsweep sidecar and copy it into resources/.
+# Build the PyInstaller-bundled kettle sidecar and copy it into resources/.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SETSWEEP_SRC="${SETSWEEP_SRC:-$HOME/Repos/setsweep-core}"
+KETTLE_SRC="${KETTLE_SRC:-${SETSWEEP_SRC:-$ROOT/../kettle-core}}"
 
-if [[ ! -d "$SETSWEEP_SRC" ]]; then
-  echo "error: setsweep-core source not found at $SETSWEEP_SRC" >&2
-  echo "Set SETSWEEP_SRC to the setsweep-core repo and retry." >&2
+if [[ ! -d "$KETTLE_SRC" ]]; then
+  echo "error: kettle-core source not found at $KETTLE_SRC" >&2
+  echo "Set KETTLE_SRC to the kettle-core repo and retry." >&2
   exit 1
 fi
 
-if [[ -n "${SETSWEEP_VENV:-}" && -x "$SETSWEEP_VENV/bin/python" ]]; then
+# Fail the release gate before creating a venv, installing packages, or replacing
+# resources. The override is accepted only for an explicitly local build.
+CORE_PROVENANCE="$("$ROOT/scripts/check-core-source.sh" "$KETTLE_SRC")"
+IFS=$'\t' read -r KETTLE_COMMIT KETTLE_DIRTY KETTLE_SRC <<< "$CORE_PROVENANCE"
+
+if [[ -n "${KETTLE_VENV:-}" ]]; then
+  VENV="$KETTLE_VENV"
+elif [[ -n "${SETSWEEP_VENV:-}" && -x "$SETSWEEP_VENV/bin/python" ]]; then
   VENV="$SETSWEEP_VENV"
+elif [[ -x "${HOME}/.kettle-venv/bin/python" ]]; then
+  VENV="${HOME}/.kettle-venv"
 elif [[ -x "${HOME}/.setsweep-venv/bin/python" ]]; then
   VENV="${HOME}/.setsweep-venv"
 else
@@ -26,51 +35,68 @@ fi
 
 PYTHON="$VENV/bin/python"
 
-echo "[build-sidecar] setsweep source: $SETSWEEP_SRC"
+echo "[build-sidecar] kettle source: $KETTLE_SRC"
 echo "[build-sidecar] venv: $VENV"
 
-"$PYTHON" -m pip install -q -e "$SETSWEEP_SRC"
-"$PYTHON" -m pip install -q pyinstaller
-
-export SETSWEEP_SRC
-cd "$ROOT"
-"$PYTHON" -m PyInstaller --noconfirm --clean setsweep-sidecar.spec
-
-mkdir -p "$ROOT/resources"
-rm -rf "$ROOT/resources/setsweep-sidecar"
-cp -R "$ROOT/dist/setsweep-sidecar" "$ROOT/resources/setsweep-sidecar"
-
-SETSWEEP_VER="$("$PYTHON" -c "import importlib.metadata as m; print(m.version('setsweep'))")"
+KETTLE_VER="$(PYTHONPATH="$KETTLE_SRC" "$PYTHON" -c \
+  "import kettle_contract as c; print(c.core_version())")"
+API_VERSION="$(PYTHONPATH="$KETTLE_SRC" "$PYTHON" -c \
+  "import kettle_contract as c; print(c.API_VERSION)")"
+DESK_SCHEMA_VERSION="$(PYTHONPATH="$KETTLE_SRC" "$PYTHON" -c \
+  "import kettle_contract as c; print(c.DESK_SCHEMA_VERSION)")"
 SHELL_VER="$(node -p "require('$ROOT/package.json').version")"
-BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 PYTHON_VER="$("$PYTHON" -c "import platform; print(platform.python_version())")"
+KETTLE_INDEX_SHA256="$("$PYTHON" -c \
+  "import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())" \
+  "$KETTLE_SRC/static/index.html")"
 
-SETSWEEP_COMMIT="unknown"
-SETSWEEP_DIRTY="unknown"
-if git -C "$SETSWEEP_SRC" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  SETSWEEP_COMMIT="$(git -C "$SETSWEEP_SRC" rev-parse --short=12 HEAD)"
-  if [[ -n "$(git -C "$SETSWEEP_SRC" status --porcelain)" ]]; then
-    SETSWEEP_DIRTY="true"
-  else
-    SETSWEEP_DIRTY="false"
-  fi
+if [[ -z "$KETTLE_VER" || "$KETTLE_VER" == "unknown" ]]; then
+  echo "error: kettle-core did not report a release version" >&2
+  exit 1
 fi
 
-export BUILT PYTHON_VER ROOT SETSWEEP_COMMIT SETSWEEP_DIRTY SETSWEEP_SRC SETSWEEP_VER SHELL_VER
+"$PYTHON" -m pip install -q -e "$KETTLE_SRC"
+"$PYTHON" -m pip install -q pyinstaller
+
+export KETTLE_SRC
+cd "$ROOT"
+"$PYTHON" -m PyInstaller --noconfirm --clean kettle-sidecar.spec
+
+# Catch a concurrent source edit or a build tool that dirtied core. Release
+# provenance must describe the same clean revision PyInstaller just consumed.
+CORE_PROVENANCE_AFTER="$("$ROOT/scripts/check-core-source.sh" "$KETTLE_SRC")"
+IFS=$'\t' read -r COMMIT_AFTER DIRTY_AFTER SOURCE_AFTER <<< "$CORE_PROVENANCE_AFTER"
+if [[ "$COMMIT_AFTER" != "$KETTLE_COMMIT" \
+    || "$DIRTY_AFTER" != "$KETTLE_DIRTY" \
+    || "$SOURCE_AFTER" != "$KETTLE_SRC" ]]; then
+  echo "error: kettle-core provenance changed during the sidecar build" >&2
+  exit 1
+fi
+
+mkdir -p "$ROOT/resources"
+rm -rf "$ROOT/resources/kettle-sidecar"
+cp -R "$ROOT/dist/kettle-sidecar" "$ROOT/resources/kettle-sidecar"
+
+BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+export API_VERSION BUILT DESK_SCHEMA_VERSION PYTHON_VER ROOT KETTLE_COMMIT
+export KETTLE_DIRTY KETTLE_INDEX_SHA256 KETTLE_SRC KETTLE_VER SHELL_VER
 "$PYTHON" - <<'PY'
 import json
 import os
 from pathlib import Path
 
-dirty = os.environ["SETSWEEP_DIRTY"]
+dirty = os.environ["KETTLE_DIRTY"]
 payload = {
     "shell": os.environ["SHELL_VER"],
-    "setsweep": os.environ["SETSWEEP_VER"],
+    "kettle": os.environ["KETTLE_VER"],
+    "apiVersion": int(os.environ["API_VERSION"]),
+    "deskSchemaVersion": int(os.environ["DESK_SCHEMA_VERSION"]),
     "built": os.environ["BUILT"],
     "python": os.environ["PYTHON_VER"],
-    "setsweepSource": os.environ["SETSWEEP_SRC"],
-    "setsweepCommit": os.environ["SETSWEEP_COMMIT"],
-    "setsweepDirty": None if dirty == "unknown" else dirty == "true",
+    "kettleCommit": os.environ["KETTLE_COMMIT"],
+    "kettleDirty": None if dirty == "unknown" else dirty == "true",
+    "kettleIndexSha256": os.environ["KETTLE_INDEX_SHA256"],
 }
 
 (Path(os.environ["ROOT"]) / "resources" / "version.json").write_text(
@@ -78,4 +104,4 @@ payload = {
 )
 PY
 
-echo "[build-sidecar] → resources/setsweep-sidecar/ (setsweep $SETSWEEP_VER, shell $SHELL_VER)"
+echo "[build-sidecar] → resources/kettle-sidecar/ (kettle $KETTLE_VER, shell $SHELL_VER)"

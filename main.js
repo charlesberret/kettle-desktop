@@ -1,5 +1,5 @@
-// Electron shell for setsweep. Spawns the existing Python server (`setsweep --web`)
-// as a sidecar, waits for it to bind, then loads its localhost URL in a BrowserWindow.
+// Electron shell for kettle. Attaches to a compatible core already on :4242 or
+// spawns an owned Python sidecar, then loads its localhost URL in a BrowserWindow.
 // The frontend (static/index.html) is unchanged — preload.js shims window.pywebview.api.
 
 const { app, BrowserWindow, Menu, dialog, shell, ipcMain, nativeImage } = require('electron');
@@ -8,8 +8,14 @@ const fs = require('fs');
 const http = require('http');
 const net = require('net');
 const path = require('path');
+const CORE_COMPATIBILITY = require('./kettle-compatibility.json');
+const {
+  validateCoreIndex,
+  validateCorePing,
+} = require('./lib/core-contract');
+const { planSidecarStartup } = require('./lib/sidecar-startup');
 
-const SETSWEEP_CMD = process.env.SETSWEEP_CMD || 'setsweep';
+const KETTLE_CMD = process.env.KETTLE_CMD || process.env.SETSWEEP_CMD || 'kettle';
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['https:', 'http:', 'mailto:']);
 
 let serverProc = null;
@@ -18,6 +24,8 @@ let mainWindow = null;
 let splashWindow = null;
 let sidecarLog = null;
 let versionInfo = null;
+let serverIdentity = null;
+let serverOwned = false;
 
 function resolveAppIconPath() {
   const bundled = path.join(process.resourcesPath || '', 'icon.icns');
@@ -46,31 +54,55 @@ function loadVersionInfo() {
       return JSON.parse(fs.readFileSync(p, 'utf8'));
     } catch { /* try next */ }
   }
-  return { shell: app.getVersion(), setsweep: 'dev' };
+  return { shell: app.getVersion(), kettle: 'dev' };
+}
+
+function updateAboutPanel() {
+  const coreVersion = serverIdentity?.version || versionInfo?.kettle || 'dev';
+  app.setAboutPanelOptions({
+    applicationName: 'Kettle',
+    applicationVersion: versionInfo?.shell || app.getVersion(),
+    version: `Kettle server ${coreVersion}`,
+    copyright: 'Charles Berret',
+  });
 }
 
 function resolveSidecar() {
-  if (process.env.SETSWEEP_CMD) {
-    return { cmd: process.env.SETSWEEP_CMD, args: ['--web'], bundled: false };
+  if (process.env.KETTLE_CMD || process.env.SETSWEEP_CMD) {
+    return { cmd: KETTLE_CMD, args: ['--web'], bundled: false };
   }
 
-  const bundled = path.join(process.resourcesPath || '', 'setsweep-sidecar', 'setsweep-sidecar');
+  const bundled = path.join(process.resourcesPath || '', 'kettle-sidecar', 'kettle-sidecar');
   if (bundled && fs.existsSync(bundled)) {
     return { cmd: bundled, args: [], bundled: true };
   }
 
-  return { cmd: SETSWEEP_CMD, args: ['--web'], bundled: false };
+  return { cmd: KETTLE_CMD, args: ['--web'], bundled: false };
 }
 
 function resolveProjectsPath() {
   if (process.env.DESK_PROJECTS) return process.env.DESK_PROJECTS;
-  return path.join(app.getPath('userData'), 'projects.json');
+  const current = path.join(app.getPath('userData'), 'projects.json');
+  if (fs.existsSync(current)) return current;
+  if (process.platform === 'darwin') {
+    const legacy = path.join(
+      app.getPath('home'),
+      'Library',
+      'Application Support',
+      'Setsweep',
+      'projects.json'
+    );
+    if (fs.existsSync(legacy)) return legacy;
+  }
+  return current;
 }
 
 function registryImportSources() {
-  const srcRoot = process.env.SETSWEEP_SRC
-    || path.join(process.env.HOME || '', 'Repos/setsweep-core');
+  const srcRoot = process.env.KETTLE_SRC
+    || process.env.SETSWEEP_SRC
+    || path.resolve(__dirname, '..', 'kettle-core');
   return [
+    process.env.KETTLE_PROJECTS_SRC,
     process.env.SETSWEEP_PROJECTS_SRC,
     path.join(srcRoot, 'projects.json'),
   ].filter(Boolean);
@@ -127,56 +159,67 @@ function openSidecarLog() {
 }
 
 function logSidecar(chunk) {
-  process.stdout.write(`[setsweep] ${chunk}`);
+  process.stdout.write(`[kettle] ${chunk}`);
   if (sidecarLog && !sidecarLog.destroyed) sidecarLog.write(chunk);
 }
 
-function pingSidecar(port) {
+function requestSidecar(port, pathname) {
   return new Promise((resolve, reject) => {
     const req = http.get({
       hostname: '127.0.0.1',
       port,
-      path: '/api/ping',
+      path: pathname,
       timeout: 500,
     }, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
       res.on('end', () => {
         if (res.statusCode !== 200) {
-          reject(new Error(`Sidecar ping returned HTTP ${res.statusCode}`));
+          reject(new Error(`Sidecar ${pathname} returned HTTP ${res.statusCode}`));
           return;
         }
-        try {
-          const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-          if (body.app === 'setsweep' && body.port === port) {
-            resolve(body);
-            return;
-          }
-          reject(new Error('Sidecar ping did not identify Setsweep'));
-        } catch (err) {
-          reject(new Error(`Could not parse sidecar ping: ${err.message}`));
-        }
+        resolve(Buffer.concat(chunks));
       });
     });
     req.on('timeout', () => {
-      req.destroy(new Error('Timed out waiting for sidecar ping'));
+      req.destroy(new Error(`Timed out waiting for sidecar ${pathname}`));
     });
     req.on('error', reject);
   });
 }
 
-function waitForSidecar(port, timeoutMs = 15000) {
+async function pingSidecar(port, provenance = null) {
+  const raw = await requestSidecar(port, '/api/ping');
+  let body;
+  try {
+    body = JSON.parse(raw.toString('utf8'));
+  } catch (err) {
+    throw new Error(`Could not parse sidecar ping: ${err.message}`);
+  }
+  return validateCorePing(body, {
+    port,
+    compatibility: CORE_COMPATIBILITY,
+    provenance,
+  });
+}
+
+async function verifyCanonicalCoreIndex(port, provenance) {
+  const body = await requestSidecar(port, '/');
+  validateCoreIndex(body, provenance);
+}
+
+function waitForSidecar(port, timeoutMs = 15000, provenance = null) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
     let lastErr = null;
     const tryOnce = () => {
-      pingSidecar(port)
+      pingSidecar(port, provenance)
         .then(resolve)
         .catch((err) => {
           lastErr = err;
           if (Date.now() >= deadline) {
             const detail = lastErr ? `: ${lastErr.message}` : '';
-            reject(new Error(`Timed out waiting for Setsweep /api/ping${detail}`));
+            reject(new Error(`Timed out waiting for Kettle /api/ping${detail}`));
             return;
           }
           setTimeout(tryOnce, 150);
@@ -186,7 +229,7 @@ function waitForSidecar(port, timeoutMs = 15000) {
   });
 }
 
-/** Canonical setsweep-core default — prefer this so the plugin can attach without discovery. */
+/** Canonical kettle-core default — prefer this so the plugin can attach without discovery. */
 const DEFAULT_CORE_PORT = 4242;
 
 function findFreePort() {
@@ -212,21 +255,14 @@ function isPortFree(port) {
   });
 }
 
-/**
- * Prefer 4242 when free so desktop and plugin share one well-known port.
- * If something already holds 4242 (CLI `setsweep --web`, another app), fall back
- * to an ephemeral port — plugin can still find us via ~/.cache/setsweep/server.json.
- */
-async function chooseSidecarPort() {
-  if (await isPortFree(DEFAULT_CORE_PORT)) return DEFAULT_CORE_PORT;
-  return findFreePort();
-}
-
+/** Stop only a process this desktop instance spawned; attached cores are never owned. */
 function killSidecar() {
-  if (serverProc && !serverProc.killed) {
+  if (serverOwned && serverProc && !serverProc.killed) {
     try { serverProc.kill('SIGTERM'); } catch { /* already gone */ }
   }
   serverProc = null;
+  serverOwned = false;
+  serverIdentity = null;
   serverPort = null;
 }
 
@@ -240,13 +276,14 @@ function sidecarLogPath() {
 }
 
 function showSidecarCrashDialog(code) {
-  dialog.showErrorBox('Setsweep server stopped',
-    `The setsweep server exited unexpectedly (code ${code}).\n\nLog: ${sidecarLogPath()}`);
+  dialog.showErrorBox('Kettle server stopped',
+    `The kettle server exited unexpectedly (code ${code}).\n\nLog: ${sidecarLogPath()}`);
 }
 
 function startSidecar(port) {
   const { cmd, args, bundled } = resolveSidecar();
   const spawnArgs = [...args, '--port', String(port), '--no-open'];
+  const provenance = bundled ? versionInfo : null;
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -263,22 +300,23 @@ function startSidecar(port) {
     });
 
     serverProc = proc;
+    serverOwned = true;
 
     proc.on('error', (err) => {
       const hint = bundled
         ? 'The bundled server failed to launch.'
-        : 'Is `setsweep` on PATH? Try: which setsweep';
-      fail(new Error(`Could not launch setsweep (${cmd}): ${err.message}\n\n${hint}`));
+        : 'Is `kettle` on PATH? Try: which kettle';
+      fail(new Error(`Could not launch kettle (${cmd}): ${err.message}\n\n${hint}`));
     });
 
     proc.stdout.on('data', (b) => logSidecar(b));
     proc.stderr.on('data', (b) => logSidecar(b));
 
     proc.on('exit', (code, sig) => {
-      console.log(`[setsweep] sidecar exited code=${code} sig=${sig}`);
+      console.log(`[kettle] sidecar exited code=${code} sig=${sig}`);
       serverProc = null;
       if (!settled && !app.isQuitting) {
-        fail(new Error(`The setsweep server exited unexpectedly (code ${code}).`));
+        fail(new Error(`The kettle server exited unexpectedly (code ${code}).`));
         return;
       }
       if (!app.isQuitting) {
@@ -287,9 +325,11 @@ function startSidecar(port) {
       }
     });
 
-    waitForSidecar(port)
-      .then(() => {
+    waitForSidecar(port, 15000, provenance)
+      .then(async (identity) => {
+        if (bundled) await verifyCanonicalCoreIndex(port, provenance);
         if (settled) return;
+        serverIdentity = identity;
         settled = true;
         resolve(proc);
       })
@@ -344,7 +384,7 @@ function buildMenu() {
   const openSettings = () => mainWindow && mainWindow.webContents.executeJavaScript(
     'window.openAdmin && openAdmin()'
   );
-  const appName = app.name || 'Setsweep';
+  const appName = app.name || 'Kettle';
   const template = [
     {
       label: appName,
@@ -454,12 +494,35 @@ async function createWindow() {
   sidecarLog = openSidecarLog();
   ensureProjectsRegistry();
 
-  serverPort = await chooseSidecarPort();
-  await startSidecar(serverPort);
+  const startup = await planSidecarStartup({
+    defaultPort: DEFAULT_CORE_PORT,
+    isPortFree,
+    pingCompatibleCore: (port) => pingSidecar(port),
+    findFreePort,
+  });
+  serverPort = startup.port;
+  if (startup.mode === 'attach') {
+    serverProc = null;
+    serverOwned = false;
+    serverIdentity = startup.identity;
+    console.log(
+      `[shell] attached to compatible Kettle ${serverIdentity.version} `
+      + `at http://127.0.0.1:${serverPort}/`
+    );
+  } else {
+    if (startup.reason === 'default-port-incompatible') {
+      console.warn(
+        `[shell] port ${DEFAULT_CORE_PORT} is occupied by an incompatible service; `
+        + `starting an owned sidecar on ${serverPort}: ${startup.detail}`
+      );
+    }
+    await startSidecar(serverPort);
+  }
+  updateAboutPanel();
 
   const saved = loadWindowState();
   const winOpts = {
-    title: 'Setsweep',
+    title: 'Kettle',
     ...saved,
     minWidth: 1100,
     minHeight: 700,
@@ -486,7 +549,8 @@ async function createWindow() {
     mainWindow.show();
   });
 
-  await mainWindow.loadURL(`http://127.0.0.1:${serverPort}/`);
+  // Cache-bust the sitting shell — Electron otherwise keeps a stale index.html across deploys.
+  await mainWindow.loadURL(`http://127.0.0.1:${serverPort}/?ui=${Date.now()}`);
   mainWindow.on('close', () => saveWindowState(mainWindow));
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -497,16 +561,19 @@ async function createWindow() {
 
 function showStartupError(err) {
   closeSplash();
+  const attached = !serverOwned && serverIdentity;
   const bundled = resolveSidecar().bundled;
-  const extra = bundled
-    ? `Sidecar log: ${sidecarLogPath()}`
-    : 'Is `setsweep` on PATH? Try: which setsweep';
-  dialog.showErrorBox('Setsweep failed to start',
-    `Could not launch the setsweep server.\n\n${err.message}\n\n${extra}`);
+  const extra = attached
+    ? `The compatible core at 127.0.0.1:${serverPort} was attached, not started by desktop.`
+    : bundled
+      ? `Sidecar log: ${sidecarLogPath()}`
+      : 'Is `kettle` on PATH? Try: which kettle';
+  dialog.showErrorBox('Kettle failed to start',
+    `Could not launch the kettle server.\n\n${err.message}\n\n${extra}`);
 }
 
 // IPC for folder picker (preload exposes this as window.pywebview.api.pick_folder).
-ipcMain.handle('setsweep:pick-folder', async () => {
+ipcMain.handle('kettle:pick-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory'],
     defaultPath: process.env.HOME,
@@ -519,7 +586,7 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.setName('Setsweep');
+  app.setName('Kettle');
 
   app.on('second-instance', () => {
     if (mainWindow) {
@@ -531,12 +598,7 @@ if (!gotLock) {
   app.whenReady().then(async () => {
     setAppIcon();
     versionInfo = loadVersionInfo();
-    app.setAboutPanelOptions({
-      applicationName: 'Setsweep',
-      applicationVersion: versionInfo.shell,
-      version: `Setsweep server ${versionInfo.setsweep}`,
-      copyright: 'Charles Berret',
-    });
+    updateAboutPanel();
 
     buildMenu();
     try {
@@ -567,7 +629,7 @@ if (!gotLock) {
     if (sidecarLog && !sidecarLog.destroyed) sidecarLog.end();
   });
 
-  // Single-window app: closing the window quits and tears down the sidecar.
+  // Single-window app: closing quits and tears down only an owned sidecar.
   app.on('window-all-closed', () => {
     quitApp();
   });

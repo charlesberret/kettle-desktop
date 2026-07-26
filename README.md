@@ -1,71 +1,105 @@
-# setsweep-desktop
+# Kettle Desktop
 
-Electron shell for [setsweep-core](../setsweep-core/), the desk/review tool. Wraps the Python server in a native macOS window — the `.app` you double-click instead of running `setsweep` in a terminal. Host adapters (VS Code/Cursor, later Obsidian/Sublime) live in [`setsweep-plugin`](../setsweep-plugin/).
+**A native macOS window for the Kettle review desk.**
 
-Product-wide plan: [`setsweep-core/ROADMAP.md`](../setsweep-core/ROADMAP.md) — this repo's
-distribution work package is brief 15 there (`docs/briefs/15-desktop-distribution.md`).
+[![Checks](https://github.com/charlesberret/kettle-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/charlesberret/kettle-desktop/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
 
-## Architecture
+Kettle Desktop is a thin Electron shell around
+[Kettle Core](https://github.com/charlesberret/kettle-core). It does not carry
+a separate frontend or product model. The public project home is
+**[charlesberret/kettle](https://github.com/charlesberret/kettle)**.
 
-- **Sidecar pattern.** On launch the main process starts the setsweep web server (bundled binary when packaged, otherwise `setsweep --web` on PATH), polls until it is listening, then loads `http://127.0.0.1:<port>/` in a `BrowserWindow`.
-- **Single UI source.** There is **no separate desktop frontend**. The window loads the same
-  `setsweep-core/static/index.html` (and themes, marked, purify) that the browser and the
-  Python sidecar serve. `preload.js` only shims `window.pywebview.api.pick_folder` for the
-  native folder dialog. **Polish the web UI in core once** — desktop picks it up on the next
-  `setsweep --web` (dev) or `npm run build:sidecar` (packaged). Founding / add-project live
-  in core static (brief 22); never add an Electron-only wizard. Do not fork styles here.
-- **External-link interception.** Off-localhost URLs open in the default browser via `shell.openExternal`.
-- **Single-instance lock.** Second launches focus the existing window.
-- **Clean shutdown.** Closing the window or quitting kills the Python sidecar.
+## How it works
+
+1. If a compatible core already owns `127.0.0.1:4242`, the app attaches without
+   taking ownership of that process.
+2. Otherwise it launches an owned Kettle sidecar, on 4242 when available or an
+   ephemeral localhost port when another service occupies it.
+3. The window loads the core's own `static/index.html`.
+4. Quit tears down only the sidecar this app started.
+
+Packaged releases validate the bundled core version, contract integers, Git
+commit, clean-tree state, and exact web-index hash before opening the window.
+The supported contract set is declared in
+[kettle-compatibility.json](./kettle-compatibility.json).
+
+During the rename transition, an external core may still identify as
+`setsweep`; bundled releases must identify as `kettle`. Existing Setsweep
+Application Support data is used in place when no Kettle registry exists, so
+the shell does not create a competing registry.
 
 ## Develop
 
-```sh
-npm install        # one-time
-npm start          # electron-forge start; requires setsweep on PATH
-```
+Requirements:
 
-For dev, install setsweep from core (`pip install -e ~/cloud/git-projects/setsweep-core`). The shell widens PATH to include Homebrew, pyenv shims, and `~/.local/bin` so a GUI launch resolves `setsweep` the same way a terminal does.
-
-Override the sidecar binary with `SETSWEEP_CMD=/path/to/setsweep`.
-
-## Build
+- macOS
+- Node.js 22.12 through 25 (Node 26 is not yet supported by the packaging toolchain)
+- a working `kettle` command from
+  [kettle-core](https://github.com/charlesberret/kettle-core)
 
 ```sh
-npm run build:sidecar   # PyInstaller → resources/setsweep-sidecar/ + resources/version.json
-npm run package         # → out/Setsweep-darwin-arm64/Setsweep.app
-npm run package:shell   # same, but skip sidecar rebuild (use when sidecar is already fresh)
-npm run install:app     # package + copy to ~/Applications/Setsweep.app (Spotlight / launcher)
-npm run make            # → out/make/zip/darwin/arm64/Setsweep-*.zip
+npm install
+npm test
+npm start
 ```
 
-`build:sidecar` reads the setsweep-core source from `SETSWEEP_SRC` (default `~/cloud/git-projects/setsweep-core`). Python comes from `SETSWEEP_VENV`, `~/.setsweep-venv`, or a local `.build-venv` created on first build.
+Override the development core command with `KETTLE_CMD=/path/to/kettle`.
+`SETSWEEP_CMD` remains a temporary compatibility fallback.
 
-The packaged `.app` is self-contained: no Python install required. Project registry and settings live under `~/Library/Application Support/Setsweep/`. On first launch, if `projects.json` is missing, the shell copies it from `SETSWEEP_SRC/projects.json` (default `~/cloud/git-projects/setsweep-core`) or `SETSWEEP_PROJECTS_SRC`. Sidecar logs: `~/Library/Logs/Setsweep/sidecar.log`.
+`npm test` is side-effect free with respect to the live desk. It runs JavaScript
+and shell syntax checks plus unit tests; it does not bind port 4242 or build a
+sidecar.
 
-No code signing or notarization yet. macOS Gatekeeper may block on first launch — right-click → Open, or run `npm run install:app` (strips quarantine after copy).
+## Package locally
 
-**Packaging seems stuck?** After PyInstaller, forge extracts Electron (~120 MB) via `extract-zip`, which can hang indefinitely on Electron 42 + Node 22+ (temp dir stuck at ~18 MB with only `LICENSES.chromium.html`). `Ctrl+C`, then `pkill -f 'electron-forge'`. Packaging runs a prePackage hook that patches extraction to use `ditto` instead — if you still see the hang, run `node scripts/patch-electron-extract.js` manually, then `npm run package:shell`. Sidecar already built? Use `package:shell` to skip PyInstaller.
-
-**Launcher note:** If you previously installed the retired pywebview wrapper at `~/Applications/Setsweep.app`, replace it with `npm run install:app`. The Electron bundle uses bundle id `net.charlesberret.setsweep` and is self-contained.
-
-## Layout
-
-```
-~/cloud/git-projects/setsweep-desktop/
-├── main.js                 Electron main: sidecar, window, menus, link interception
-├── preload.js              contextBridge: window.pywebview.api shim
-├── splash.html             Startup splash while the sidecar binds
-├── sidecar_entry.py        PyInstaller entrypoint
-├── setsweep-sidecar.spec   PyInstaller spec
-├── scripts/build-sidecar.sh
-├── package.json            electron-forge config
-├── icon.icns               App icon (temporary three-pane art; rebuild with iconutil if needed)
-├── assets/icon-1024.png    Source PNG for future iconset work
-├── resources/              Build artifacts (gitignored): sidecar binary + version.json
-└── out/                    Packaged .app (gitignored)
+```sh
+npm run build:sidecar
+npm run smoke:sidecar
+npm run package
 ```
 
-## Deferred
+`build:sidecar` reads `../kettle-core` by default. Override with
+`KETTLE_SRC=/path/to/kettle-core`. Python comes from `KETTLE_VENV`,
+`~/.kettle-venv`, a legacy Setsweep venv, or a local `.build-venv`.
 
-- **Code signing + DMG** once you want to share the `.app` with anyone else.
+Release builds refuse a dirty, unversioned, or structurally incomplete core
+before replacing local artifacts. `KETTLE_ALLOW_UNVERIFIED_CORE=1` is available
+only for direct local experiments and cannot bypass CI or release gates.
+
+Generated artifacts are ignored:
+
+```text
+resources/kettle-sidecar/
+resources/version.json
+out/Kettle-*/Kettle.app
+```
+
+`npm run install:app` copies a packaged build into
+`~/Applications/Kettle.app`. The app is not signed or notarized yet, so local
+packages are development artifacts rather than a public download.
+
+## Architecture boundaries
+
+- Desktop owns Electron lifecycle, native menus, window state, external-link
+  interception, folder selection, bundling, and future signing/notarization.
+- Core owns the desk, API, migrations, curator runtime, web UI, and product
+  semantics.
+- Founding or sitting gaps are fixed in core web once, never in a desktop-only
+  fork.
+- File access remains in the localhost core; Electron uses context isolation,
+  disables Node integration in the web view, rejects webviews, denies permission
+  requests, and opens off-core links in the system browser.
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Core/API changes belong in
+[kettle-core](https://github.com/charlesberret/kettle-core) first.
+Vulnerabilities should be reported privately as described in
+[SECURITY.md](./SECURITY.md).
+
+Release-facing changes are recorded in [CHANGELOG.md](./CHANGELOG.md).
+
+## License
+
+MIT. See [LICENSE](./LICENSE).

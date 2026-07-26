@@ -1,24 +1,36 @@
 {
-  "name": "setsweep-desktop",
+  "name": "kettle-desktop",
   "version": "0.1.0",
-  "description": "Electron shell for setsweep — wraps the local Python server in a native macOS window.",
+  "description": "Native macOS shell for Kettle's local-first review desk.",
   "main": "main.js",
   "private": true,
+  "license": "MIT",
+  "author": "Charles Berret",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/charlesberret/kettle-desktop.git"
+  },
+  "homepage": "https://github.com/charlesberret/kettle",
+  "bugs": {
+    "url": "https://github.com/charlesberret/kettle-desktop/issues"
+  },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.12.0 <26"
   },
   "scripts": {
     "start": "electron-forge start",
-    "check": "node --check main.js && node --check preload.js && node --check scripts/smoke-sidecar.js",
+    "check": "node --check main.js && node --check preload.js && node --check lib/core-contract.js && node --check lib/sidecar-startup.js && node --check scripts/check-package.js && node --check scripts/finalize-package.js && node --check scripts/smoke-sidecar.js && bash -n scripts/build-sidecar.sh && bash -n scripts/check-core-source.sh",
+    "test:unit": "node --test test/*.test.js",
     "smoke:sidecar": "node scripts/smoke-sidecar.js",
-    "test": "npm run check && npm run smoke:sidecar",
+    "test": "npm run check && npm run test:unit",
     "build:sidecar": "bash scripts/build-sidecar.sh",
-    "package:shell": "npm run smoke:sidecar && electron-forge package",
-    "package": "npm run build:sidecar && npm run smoke:sidecar && electron-forge package",
+    "package:forge": "node scripts/check-package.js --preflight && electron-forge package && node scripts/finalize-package.js && node scripts/check-package.js",
+    "package:shell": "npm run smoke:sidecar && npm run package:forge",
+    "package": "KETTLE_RELEASE_BUILD=1 npm run build:sidecar && npm run smoke:sidecar && npm run package:forge",
     "install:app": "npm run package && bash scripts/install-app.sh",
     "reinstall": "npm run install:app",
     "reinstall:shell": "npm run package:shell && bash scripts/install-app.sh",
-    "make": "npm run build:sidecar && npm run smoke:sidecar && electron-forge make"
+    "make": "KETTLE_RELEASE_BUILD=1 npm run build:sidecar && npm run smoke:sidecar && npm run package:forge && electron-forge make --skip-package"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.11.2",
@@ -32,21 +44,45 @@
         "prePackage": "node scripts/patch-electron-extract.js"
       },
       "packagerConfig": {
-        "name": "Setsweep",
-        "executableName": "Setsweep",
-        "appBundleId": "net.charlesberret.setsweep",
-        "icon": "icon",
+        "name": "Kettle",
+        "executableName": "Kettle",
+        "appBundleId": "net.charlesberret.kettle",
+        "asar": true,
+        "icon": "icon.icns",
         "osxSign": false,
         "osxNotarize": false,
+        "extendInfo": {
+          "NSAppTransportSecurity": {
+            "NSAllowsArbitraryLoads": false,
+            "NSAllowsLocalNetworking": true
+          }
+        },
         "ignore": [
+          "^/\\.github($|/)",
           "^/\\.build-venv($|/)",
+          "^/\\.gitignore$",
+          "^/CHANGELOG\\.md$",
+          "^/CONTRIBUTING\\.md$",
+          "^/README\\.md$",
+          "^/SECURITY\\.md$",
           "^/build($|/)",
           "^/dist($|/)",
-          "^/assets($|/)"
+          "^/assets($|/)",
+          "^/icon\\.iconset($|/)",
+          "^/icon\\.icns$",
+          "^/kettle-compatibility\\.json$",
+          "^/kettle-sidecar\\.spec$",
+          "^/node_modules($|/)",
+          "^/package-lock\\.json$",
+          "^/resources($|/)",
+          "^/scripts($|/)",
+          "^/sidecar_entry\\.py$",
+          "^/test($|/)"
         ],
         "extraResource": [
-          "resources/setsweep-sidecar",
-          "resources/version.json"
+          "resources/kettle-sidecar",
+          "resources/version.json",
+          "kettle-compatibility.json"
         ]
       },
       "makers": [

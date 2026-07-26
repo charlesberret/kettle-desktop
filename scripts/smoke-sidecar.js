@@ -6,11 +6,15 @@ const http = require('http');
 const net = require('net');
 const os = require('os');
 const path = require('path');
+const compatibility = require('../kettle-compatibility.json');
+const { validateCoreIndex, validateCorePing } = require('../lib/core-contract');
 
 const ROOT = path.resolve(__dirname, '..');
-const SIDECAR = process.env.SETSWEEP_SIDECAR
-  || path.join(ROOT, 'resources', 'setsweep-sidecar', 'setsweep-sidecar');
-const TIMEOUT_MS = Number(process.env.SETSWEEP_SMOKE_TIMEOUT_MS || 15000);
+const SIDECAR = process.env.KETTLE_SIDECAR
+  || path.join(ROOT, 'resources', 'kettle-sidecar', 'kettle-sidecar');
+const TIMEOUT_MS = Number(process.env.KETTLE_SMOKE_TIMEOUT_MS || 15000);
+const VERSION_PATH = process.env.KETTLE_VERSION_INFO
+  || path.join(ROOT, 'resources', 'version.json');
 
 function findFreePort() {
   return new Promise((resolve, reject) => {
@@ -37,7 +41,7 @@ function request(pathname, port) {
       res.on('end', () => {
         resolve({
           statusCode: res.statusCode,
-          body: Buffer.concat(chunks).toString('utf8'),
+          body: Buffer.concat(chunks),
         });
       });
     });
@@ -48,14 +52,14 @@ function request(pathname, port) {
   });
 }
 
-async function waitForPing(port, deadline) {
+async function waitForPing(port, deadline, provenance) {
   let lastErr = null;
   while (Date.now() < deadline) {
     try {
       const res = await request('/api/ping', port);
       if (res.statusCode === 200) {
-        const body = JSON.parse(res.body);
-        if (body.app === 'setsweep' && body.port === port) return body;
+        const body = JSON.parse(res.body.toString('utf8'));
+        return validateCorePing(body, { port, compatibility, provenance });
       }
     } catch (err) {
       lastErr = err;
@@ -69,9 +73,13 @@ async function main() {
   if (!fs.existsSync(SIDECAR)) {
     throw new Error(`Sidecar not found at ${SIDECAR}. Run npm run build:sidecar first.`);
   }
+  if (!fs.existsSync(VERSION_PATH)) {
+    throw new Error(`Version provenance not found at ${VERSION_PATH}. Run npm run build:sidecar first.`);
+  }
+  const provenance = JSON.parse(fs.readFileSync(VERSION_PATH, 'utf8'));
 
   const port = await findFreePort();
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'setsweep-sidecar-smoke-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kettle-sidecar-smoke-'));
   const projectsPath = path.join(tmpDir, 'projects.json');
   fs.writeFileSync(projectsPath, `${JSON.stringify({ projects: [] }, null, 2)}\n`);
 
@@ -94,11 +102,12 @@ async function main() {
 
   try {
     const deadline = Date.now() + TIMEOUT_MS;
-    const ping = await waitForPing(port, deadline);
+    const ping = await waitForPing(port, deadline, provenance);
     const root = await request('/', port);
     if (root.statusCode !== 200) {
       throw new Error(`Expected GET / to return 200, got ${root.statusCode}`);
     }
+    validateCoreIndex(root.body, provenance);
     console.log(`sidecar smoke ok: pid=${ping.pid} port=${ping.port}`);
   } catch (err) {
     proc.kill('SIGTERM');
