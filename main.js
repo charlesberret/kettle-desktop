@@ -8,7 +8,6 @@ const fs = require('fs');
 const http = require('http');
 const net = require('net');
 const path = require('path');
-const CORE_COMPATIBILITY = require('./kettle-compatibility.json');
 const {
   validateCoreIndex,
   validateCorePing,
@@ -17,6 +16,30 @@ const { planSidecarStartup } = require('./lib/sidecar-startup');
 
 const KETTLE_CMD = process.env.KETTLE_CMD || process.env.SETSWEEP_CMD || 'kettle';
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['https:', 'http:', 'mailto:']);
+
+/**
+ * Resolve kettle-compatibility.json for both dev (repo root next to main.js)
+ * and packaged apps (extraResource under process.resourcesPath). Forge ignores
+ * the file from app.asar and copies it as a sibling resource.
+ */
+function loadCompatibility() {
+  const candidates = [
+    path.join(__dirname, 'kettle-compatibility.json'),
+    path.join(process.resourcesPath || '', 'kettle-compatibility.json'),
+  ];
+  for (const p of candidates) {
+    try {
+      return JSON.parse(fs.readFileSync(p, 'utf8'));
+    } catch {
+      /* try next */
+    }
+  }
+  throw new Error(
+    'kettle-compatibility.json not found next to main.js or in resourcesPath'
+  );
+}
+
+const CORE_COMPATIBILITY = loadCompatibility();
 
 let serverProc = null;
 let serverPort = null;
