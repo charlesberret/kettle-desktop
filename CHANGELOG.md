@@ -4,6 +4,10 @@
 
 ### Changed
 
+- **Desktop v2 scaffold:** product UI is now `app/` (queue · editor · desk),
+  modeled on the VS Code/Cursor plugin sitting, not core `static/index.html`.
+- v0 web-sitting shell preserved as tag `desktop-v0-web-sitting` and branch
+  `legacy/web-sitting-shell`.
 - Renamed the macOS shell, bundle identity, sidecar, and release inputs from
   Setsweep to Kettle.
 - Pointed development and release builds at `kettle-core`.

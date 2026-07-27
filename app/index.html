@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="kettle-desktop-ui" content="v2-scaffold">
+  <title>Kettle</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="desktop-shell">
+  <div id="boot" class="boot" hidden>
+    <p id="bootMsg">Starting Kettle…</p>
+  </div>
+
+  <div id="app" class="app" hidden>
+    <aside id="queuePane" class="pane queue-pane" aria-label="Queue">
+      <header class="pane-head">
+        <label class="sr-only" for="projectSel">Project</label>
+        <select id="projectSel" title="Project"></select>
+        <button type="button" id="btnAddProject" class="btn btn-icon" title="Add project">＋</button>
+        <button type="button" id="btnRefreshQueue" class="btn btn-icon" title="Refresh queue">↻</button>
+      </header>
+      <div id="queueList" class="queue-list" role="listbox" aria-label="Queue entries"></div>
+      <p id="queueEmpty" class="empty muted">No queue entries.</p>
+    </aside>
+
+    <section id="editorPane" class="pane editor-pane" aria-label="Editor">
+      <header class="pane-head editor-head">
+        <span id="filePath" class="file-path muted">No file open</span>
+        <span id="dirtyMark" class="dirty" hidden>·</span>
+        <span class="spacer"></span>
+        <span id="diffBadge" class="diff-badge muted" hidden></span>
+        <button type="button" id="btnSave" class="btn btn-sm" disabled>save</button>
+      </header>
+      <textarea id="editor" spellcheck="false" placeholder="Select a queue entry to edit."></textarea>
+    </section>
+
+    <aside id="deskPane" class="pane desk-pane" aria-label="Desk">
+      <header class="pane-head desk-head">
+        <span class="desk-title">Desk</span>
+        <span class="spacer"></span>
+        <select id="modelSel" title="Curator model" aria-label="Curator model"></select>
+      </header>
+
+      <section class="brief-sec" aria-label="Brief">
+        <p id="briefTakeaway" class="brief-takeaway" hidden></p>
+        <div id="briefBody" class="brief-body muted">Select a project to begin.</div>
+      </section>
+
+      <div class="ritual" role="toolbar" aria-label="Ritual">
+        <button type="button" id="btnApprove" class="btn btn-ritual" disabled>Approve</button>
+        <button type="button" id="btnComment" class="btn btn-ritual" disabled>Comment</button>
+        <button type="button" id="btnSweep" class="btn btn-ritual btn-signature" disabled>Sweep</button>
+      </div>
+
+      <div id="commentDrawer" class="drawer" hidden>
+        <textarea id="commentIn" rows="3" placeholder="Note for the sweep…"></textarea>
+        <div class="drawer-actions">
+          <button type="button" id="btnCommentSend" class="btn btn-sm">save comment</button>
+          <button type="button" id="btnCommentCancel" class="btn btn-sm btn-ghost">cancel</button>
+        </div>
+      </div>
+
+      <div id="stream" class="stream" aria-live="polite"></div>
+
+      <footer class="composer">
+        <textarea id="chatIn" rows="2" placeholder="Chat with the curator…"></textarea>
+        <button type="button" id="btnSend" class="btn btn-sm">send</button>
+      </footer>
+    </aside>
+  </div>
+
+  <div id="status" class="status" role="status"></div>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

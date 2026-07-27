@@ -1,0 +1,284 @@
+/* Kettle Desktop v2 — plugin-shaped sitting (see docs/DESKTOP_V2.md) */
+:root {
+  --bg: #16161e;
+  --fg: #d8d8e0;
+  --muted: #8a8a98;
+  --line: #32323f;
+  --panel: #1c1c26;
+  --acc: #c8a24a;
+  --link: #7d9fc8;
+  --good: #7dba6f;
+  --warn: #d4756b;
+  --row-active: color-mix(in srgb, var(--link) 12%, transparent);
+  --ui: "IBM Plex Mono", "SF Mono", Menlo, monospace;
+  --body: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+  --titlebar-h: 28px;
+  --queue-w: 260px;
+  --desk-w: 320px;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.45 var(--ui);
+  -webkit-font-smoothing: antialiased;
+}
+body.desktop-shell {
+  /* Drag strip for hidden-inset title bar (main process sets titleBarStyle). */
+}
+body.desktop-shell::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: var(--titlebar-h);
+  -webkit-app-region: drag;
+  z-index: 1000;
+}
+.pane, .btn, select, textarea, input, a, button {
+  -webkit-app-region: no-drag;
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); border: 0;
+}
+.muted { color: var(--muted); }
+.spacer { flex: 1; }
+.boot {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding-top: var(--titlebar-h);
+  color: var(--muted);
+}
+
+.app {
+  display: grid;
+  grid-template-columns: var(--queue-w) 1fr var(--desk-w);
+  height: 100%;
+  padding-top: var(--titlebar-h);
+}
+.pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+}
+.desk-pane { border-right: none; border-left: 1px solid var(--line); }
+.pane-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  min-height: 40px;
+}
+.desk-title {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+select {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+}
+.btn {
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 5px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) { border-color: var(--acc); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn-sm { padding: 3px 8px; font-size: 12px; }
+.btn-icon {
+  flex: none;
+  width: 28px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 26px;
+  text-align: center;
+  background: transparent;
+  border-color: transparent;
+}
+.btn-ghost { background: transparent; }
+.btn-ritual { flex: 1; min-width: 0; }
+.btn-signature {
+  font-weight: 600;
+  border-color: color-mix(in srgb, var(--acc) 50%, var(--line));
+}
+
+.queue-list {
+  flex: 1;
+  overflow: auto;
+}
+.qitem {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.qitem:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.qitem.active { background: var(--row-active); }
+.qitem .qname {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg);
+}
+.qitem .qmeta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qitem .dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  margin-right: 6px;
+  background: var(--muted);
+  vertical-align: middle;
+}
+.qitem .dot.high { background: var(--warn); }
+.qitem .dot.medium { background: var(--acc); }
+.qitem .dot.low { background: var(--good); }
+.empty { padding: 16px 12px; font-size: 12px; }
+
+.editor-head .file-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dirty { color: var(--acc); font-weight: 700; }
+.diff-badge { font-size: 11px; font-variant-numeric: tabular-nums; }
+.diff-badge .add { color: var(--good); }
+.diff-badge .del { color: var(--warn); }
+
+#editor {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  resize: none;
+  padding: 14px 16px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13.5px/1.55 var(--ui);
+  outline: none;
+  tab-size: 4;
+}
+
+.brief-sec {
+  flex: none;
+  max-height: 28%;
+  overflow: auto;
+  padding: 12px 12px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.brief-takeaway {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  font-family: var(--body);
+}
+.brief-body {
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  font-family: var(--body);
+}
+
+.ritual {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.drawer {
+  flex: none;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.drawer textarea,
+.composer textarea {
+  width: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px;
+  font: inherit;
+  resize: vertical;
+}
+.drawer-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.stream {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.stream .line { margin: 0 0 6px; }
+.stream .line.user { color: var(--link); }
+.stream .line.agent { color: var(--fg); }
+.stream .line.sys { color: var(--muted); font-style: italic; }
+.stream .line.err { color: var(--warn); }
+
+.composer {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+}
+.composer textarea { flex: 1; min-height: 44px; max-height: 120px; }
+
+.status {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 8px;
+  pointer-events: none;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.status.show { opacity: 1; }

@@ -1,6 +1,7 @@
-// Electron shell for kettle. Attaches to a compatible core already on :4242 or
-// spawns an owned Python sidecar, then loads its localhost URL in a BrowserWindow.
-// The frontend (static/index.html) is unchanged — preload.js shims window.pywebview.api.
+// Electron shell for Kettle Desktop v2. Attaches to a compatible core already on
+// :4242 or spawns an owned Python sidecar, then loads the local app/ sitting UI
+// (plugin-shaped viewport — see docs/DESKTOP_V2.md). Core static/index.html is
+// not used as the product shell.
 
 const { app, BrowserWindow, Menu, dialog, shell, ipcMain, nativeImage } = require('electron');
 const { spawn } = require('child_process');
@@ -481,28 +482,17 @@ function wireNavigation(win, port) {
   });
 
   win.webContents.on('will-navigate', (e, url) => {
-    if (isSidecarUrl(url, port)) return;
+    // Allow the local app shell and same-origin core API navigations only.
+    if (url.startsWith('file://') || isSidecarUrl(url, port)) return;
     e.preventDefault();
     openExternalUrl(url);
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isSidecarUrl(url, port)) {
-      win.loadURL(url).catch((err) => {
-        console.warn(`[shell] failed to load sidecar URL ${url}:`, err.message);
-      });
-      return { action: 'deny' };
+    if (url.startsWith('file://') || isSidecarUrl(url, port)) {
+      return { action: 'allow' };
     }
     openExternalUrl(url);
     return { action: 'deny' };
-  });
-
-  win.webContents.on('did-finish-load', () => {
-    const init = process.platform === 'darwin'
-      ? "document.body.classList.add('desktop-shell');"
-      : '';
-    win.webContents.executeJavaScript(
-      init + "window.dispatchEvent(new Event('pywebviewready'));"
-    ).catch(() => {});
   });
 }
 
@@ -572,8 +562,8 @@ async function createWindow() {
     mainWindow.show();
   });
 
-  // Cache-bust the sitting shell — Electron otherwise keeps a stale index.html across deploys.
-  await mainWindow.loadURL(`http://127.0.0.1:${serverPort}/?ui=${Date.now()}`);
+  // v2 sitting lives in-app; core is API-only (plugin model).
+  await mainWindow.loadFile(path.join(__dirname, 'app', 'index.html'));
   mainWindow.on('close', () => saveWindowState(mainWindow));
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -595,7 +585,7 @@ function showStartupError(err) {
     `Could not launch the kettle server.\n\n${err.message}\n\n${extra}`);
 }
 
-// IPC for folder picker (preload exposes this as window.pywebview.api.pick_folder).
+// IPC for folder picker and core discovery (preload: window.kettle.*).
 ipcMain.handle('kettle:pick-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory'],
@@ -603,6 +593,11 @@ ipcMain.handle('kettle:pick-folder', async () => {
   });
   if (result.canceled || !result.filePaths.length) return null;
   return result.filePaths[0];
+});
+
+ipcMain.handle('kettle:get-core-url', async () => {
+  if (!serverPort) return null;
+  return `http://127.0.0.1:${serverPort}`;
 });
 
 const gotLock = app.requestSingleInstanceLock();
@@ -626,7 +621,7 @@ if (!gotLock) {
     buildMenu();
     try {
       await createWindow();
-      console.log(`[shell] window loaded http://127.0.0.1:${serverPort}/`);
+      console.log(`[shell] v2 sitting loaded; core API http://127.0.0.1:${serverPort}/`);
     } catch (err) {
       console.error('[shell] startup failed:', err);
       showStartupError(err);
