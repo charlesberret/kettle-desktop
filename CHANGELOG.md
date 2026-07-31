@@ -2,10 +2,18 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Project register:** `POST /api/projects/add` now sends `root` (core contract);
+  the scaffold incorrectly posted `path`, so Add Project could never register.
+
 ### Changed
 
-- **Desktop v2 scaffold:** product UI is now `app/` (queue · editor · desk),
-  modeled on the VS Code/Cursor plugin sitting, not core `static/index.html`.
+- **Desktop v2 sitting:** product UI is `app/` (queue · editor · desk), modeled on
+  the VS Code/Cursor plugin sitting, not core `static/index.html`.
+- **Ritual parity:** shared `lib/ritual-parity.js` (Found Desk label, interview vs
+  chat routing); approve streams `/api/found` when core reports `founding: true`.
+- Contract tests for sitting chrome, API payloads, and ritual enablement.
 - v0 web-sitting shell preserved as tag `desktop-v0-web-sitting` and branch
   `legacy/web-sitting-shell`.
 - Renamed the macOS shell, bundle identity, sidecar, and release inputs from
