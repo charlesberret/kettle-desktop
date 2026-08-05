@@ -404,6 +404,19 @@ function closeSplash() {
   splashWindow = null;
 }
 
+function openCommandPalette() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  // Idempotent open (renderer show()). Avoids race with the renderer's own
+  // keydown handler for the same accelerator.
+  mainWindow.webContents
+    .executeJavaScript(
+      'window.openCommandPalette && window.openCommandPalette()'
+    )
+    .catch((err) => {
+      console.warn('[shell] openCommandPalette failed:', err.message);
+    });
+}
+
 function buildMenu() {
   const openSettings = () => mainWindow && mainWindow.webContents.executeJavaScript(
     'window.openAdmin && openAdmin()'
@@ -428,6 +441,11 @@ function buildMenu() {
     {
       label: 'View',
       submenu: [
+        {
+          label: 'Command Palette…',
+          accelerator: 'CmdOrCtrl+Shift+P',
+          click: () => openCommandPalette(),
+        },
         {
           label: 'Reload',
           accelerator: 'CmdOrCtrl+R',

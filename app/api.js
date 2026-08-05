@@ -94,6 +94,8 @@
     ping: () => jget("/api/ping"),
     projects: () => jget("/api/projects"),
     queue: (project) => jget("/api/queue?project=" + encodeURIComponent(project) + "&mutate=1"),
+    interviewStatus: (project) =>
+      jget("/api/interview?project=" + encodeURIComponent(project)),
     file: (project, path) =>
       jget(
         "/api/file?project=" +
@@ -107,5 +109,8 @@
     addProject: (body) => jpost("/api/projects/add", body),
     catalog: () => jget("/api/curator/catalog"),
     setCurator: (body) => jpost("/api/curator", body),
+    clearSession: (project) => jpost("/api/clear-session", { project }),
+    /** NDJSON: sweep, refresh-briefs, compact, interview, propose, found, chat */
+    runStream: (path, body, onEvent, signal) => stream(path, body, onEvent, signal),
   };
 })(window);

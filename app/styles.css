@@ -27,20 +27,32 @@ body {
   font: 13px/1.45 var(--ui);
   -webkit-font-smoothing: antialiased;
 }
-body.desktop-shell {
-  /* Drag strip for hidden-inset title bar (main process sets titleBarStyle). */
-}
-body.desktop-shell::before {
-  content: "";
+/* Window drag: real #titlebar-drag under hidden-inset titlebar (main.js titleBarStyle).
+   Pseudo-elements (::before) often fail to drag in Electron — keep a live node. */
+#titlebar-drag {
   position: fixed;
   top: 0;
-  left: 12px;
+  /* Leave macOS traffic lights + edge resize grips out of the drag hit target */
+  left: 78px;
   right: 12px;
   height: var(--titlebar-h);
+  z-index: 5000;
   -webkit-app-region: drag;
-  z-index: 1000;
+  /* Transparent; still receives drag for the shell */
+  background: transparent;
+  pointer-events: auto;
 }
-.pane, .btn, select, textarea, input, a, button {
+/* Everything interactive must opt out so clicks reach controls under the band */
+.pane,
+.btn,
+select,
+textarea,
+input,
+a,
+button,
+.cmd-palette,
+#boot,
+#status {
   -webkit-app-region: no-drag;
 }
 
@@ -282,3 +294,89 @@ select {
   transition: opacity 0.2s;
 }
 .status.show { opacity: 1; }
+
+/* ── Command palette (Cmd+Shift+P) ─────────────────────────────── */
+.cmd-palette {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: start center;
+  padding-top: max(12vh, 64px);
+  background: color-mix(in srgb, #000 48%, transparent);
+  -webkit-app-region: no-drag;
+}
+.cmd-palette[hidden] { display: none; }
+.cmd-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(60vh, 480px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px color-mix(in srgb, #000 55%, transparent);
+  overflow: hidden;
+}
+.cmd-input {
+  flex: none;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  font: 14px/1.4 var(--ui);
+  padding: 14px 16px;
+  outline: none;
+}
+.cmd-input::placeholder { color: var(--muted); }
+.cmd-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 0;
+}
+.cmd-item {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+.cmd-item:hover,
+.cmd-item.active {
+  background: var(--row-active);
+}
+.cmd-item .cmd-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmd-item .cmd-cat {
+  flex: none;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.cmd-empty {
+  padding: 20px 16px;
+  text-align: center;
+  font-size: 12px;
+}
+.cmd-hint {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+}
+.cmd-hint-key {
+  margin-left: auto;
+  color: var(--acc);
+  font-variant-numeric: tabular-nums;
+}

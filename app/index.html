@@ -2,11 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="kettle-desktop-ui" content="v2-scaffold">
+  <meta name="kettle-desktop-ui" content="v2-scaffold-drag1">
   <title>Kettle</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="desktop-shell">
+  <!-- Real element (not ::before): Electron is unreliable for -webkit-app-region on pseudos. -->
+  <div id="titlebar-drag" aria-hidden="true"></div>
   <div id="boot" class="boot" hidden>
     <p id="bootMsg">Starting Kettle…</p>
   </div>
@@ -71,7 +73,31 @@
 
   <div id="status" class="status" role="status"></div>
 
+  <!-- Cmd+Shift+P command palette (backend / desk commands) -->
+  <div id="cmdPalette" class="cmd-palette" hidden aria-hidden="true">
+    <div class="cmd-dialog" role="dialog" aria-modal="true" aria-label="Command palette">
+      <input
+        id="cmdPaletteInput"
+        class="cmd-input"
+        type="text"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="Type a command…"
+        aria-label="Filter commands"
+        aria-controls="cmdPaletteList"
+      />
+      <div id="cmdPaletteList" class="cmd-list" role="listbox" aria-label="Commands"></div>
+      <div class="cmd-hint muted">
+        <span>↑↓ navigate</span>
+        <span>↵ run</span>
+        <span>esc close</span>
+        <span class="cmd-hint-key">⌘⇧P</span>
+      </div>
+    </div>
+  </div>
+
   <script src="api.js"></script>
+  <script src="commands.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

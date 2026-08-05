@@ -320,6 +320,175 @@
     status("project added");
   }
 
+  function streamHandler(ev) {
+    if (ev.t === "text" && ev.s) appendStream("agent", ev.s);
+    else if (ev.t === "error") appendStream("err", ev.s || "error");
+    else if (ev.t === "tool" && ev.path) appendStream("sys", "tool · " + (ev.path || ev.tool || ""));
+    else if (ev.t === "notice" && ev.s) appendStream("sys", ev.s);
+  }
+
+  async function runProjectStream(path, label, extraBody) {
+    if (!state.projectId || state.streaming) return;
+    state.streaming = true;
+    setRitualEnabled(!!state.entry);
+    appendStream("sys", "— " + label + " —");
+    try {
+      const body = Object.assign({ project: state.projectId }, extraBody || {});
+      await KettleApi.stream(path, body, streamHandler);
+      await loadQueue();
+      status(label + " finished");
+    } catch (e) {
+      appendStream("err", String(e.message || e));
+      status(String(e.message || e));
+    } finally {
+      state.streaming = false;
+      setRitualEnabled(!!state.entry);
+    }
+  }
+
+  async function pingCore() {
+    const p = await KettleApi.ping();
+    const bits = [
+      p.app || "kettle",
+      p.version || "",
+      p.port != null ? "port " + p.port : "",
+      KettleApi.getBaseUrl(),
+    ].filter(Boolean);
+    status(bits.join(" · "));
+    appendStream("sys", "ping · " + bits.join(" · "));
+  }
+
+  async function refreshBriefs() {
+    await runProjectStream("/api/refresh-briefs", "refresh briefs");
+  }
+
+  async function compactSession() {
+    if (!confirm("Compact this project's chat session?")) return;
+    await runProjectStream("/api/compact", "compact");
+  }
+
+  async function clearSession() {
+    if (!state.projectId) return;
+    if (!confirm("Clear session chatlog for this project?")) return;
+    await KettleApi.clearSession(state.projectId);
+    clearStream();
+    status("session cleared");
+  }
+
+  async function beginFounding() {
+    await runProjectStream("/api/interview", "founding interview");
+  }
+
+  async function proposeFounding() {
+    if (!confirm("Finish founding and write DESK-PROPOSAL.md?")) return;
+    await runProjectStream("/api/propose", "propose");
+  }
+
+  async function foundDesk() {
+    if (!confirm("Found the desk (charter + first queue)? Requires an approved proposal.")) return;
+    await runProjectStream("/api/found", "found");
+  }
+
+  function focusProjectSel() {
+    $("projectSel").focus();
+  }
+
+  function focusChat() {
+    $("chatIn").focus();
+  }
+
+  function focusEditor() {
+    $("editor").focus();
+  }
+
+  function focusQueue() {
+    const active = document.querySelector("#queueList .qitem.active");
+    const first = document.querySelector("#queueList .qitem");
+    const el = active || first;
+    if (el) el.focus();
+    else $("queueList").focus();
+  }
+
+  function reloadWindow() {
+    location.reload();
+  }
+
+  let palette = null;
+
+  function paletteContext() {
+    return {
+      projectId: state.projectId,
+      entry: state.entry,
+      streaming: state.streaming,
+      dirty: state.dirty,
+    };
+  }
+
+  async function runCommand(cmd) {
+    const id = cmd && cmd.id;
+    switch (id) {
+      case "ping":
+        return pingCore();
+      case "refreshQueue":
+        await loadQueue();
+        status("queue refreshed");
+        return;
+      case "registerProject":
+        return addProject();
+      case "selectProject":
+        return focusProjectSel();
+      case "save":
+        return save();
+      case "approve":
+        return approve();
+      case "comment":
+        $("commentDrawer").hidden = false;
+        $("commentIn").focus();
+        return;
+      case "sweep":
+        return sweep();
+      case "refreshBriefs":
+        return refreshBriefs();
+      case "compactSession":
+        return compactSession();
+      case "clearSession":
+        return clearSession();
+      case "beginFounding":
+        return beginFounding();
+      case "proposeFounding":
+        return proposeFounding();
+      case "foundDesk":
+        return foundDesk();
+      case "focusChat":
+        return focusChat();
+      case "focusEditor":
+        return focusEditor();
+      case "focusQueue":
+        return focusQueue();
+      case "reloadWindow":
+        return reloadWindow();
+      default:
+        status("unknown command: " + id);
+    }
+  }
+
+  function initPalette() {
+    if (!globalThis.KettleCommands) {
+      console.warn("[desk] KettleCommands missing — command palette disabled");
+      return null;
+    }
+    const catalog = KettleCommands.buildCatalog();
+    return KettleCommands.createPalette({
+      root: $("cmdPalette"),
+      input: $("cmdPaletteInput"),
+      list: $("cmdPaletteList"),
+      getCommands: () => catalog,
+      getContext: paletteContext,
+      onRun: runCommand,
+      onStatus: status,
+    });
+  }
+
   function wire() {
     $("projectSel").onchange = async () => {
       if (state.dirty && !confirm("Discard unsaved edits?")) {
@@ -372,12 +541,32 @@
         status(String(e.message || e));
       }
     };
+    palette = initPalette();
     document.addEventListener("keydown", (ev) => {
-      if ((ev.metaKey || ev.ctrlKey) && ev.key === "s") {
+      const mod = ev.metaKey || ev.ctrlKey;
+      // Cmd+Shift+P — also registered on the app menu. Always show (not toggle)
+      // so a dual delivery from menu accelerator + keydown cannot flash closed.
+      // Escape dismisses.
+      if (mod && ev.shiftKey && (ev.key === "P" || ev.key === "p")) {
+        ev.preventDefault();
+        if (palette) palette.show();
+        return;
+      }
+      if (mod && !ev.shiftKey && (ev.key === "s" || ev.key === "S")) {
         ev.preventDefault();
         save().catch((e) => status(String(e.message || e)));
+        return;
+      }
+      if (ev.key === "Escape" && palette && palette.isOpen()) {
+        ev.preventDefault();
+        palette.close();
       }
     });
+    // Menu: always open (idempotent). Prefer this over toggle so a second
+    // delivery of the same shortcut from the accelerator cannot close the bar.
+    window.openCommandPalette = () => {
+      if (palette) palette.show();
+    };
   }
 
   async function boot() {

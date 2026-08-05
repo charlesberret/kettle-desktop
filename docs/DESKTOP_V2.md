@@ -48,6 +48,12 @@ Queue, open entry, edit + save, brief, approve, comment, sweep, chat,
 founding interview/propose/found, project select/register, curator model,
 diff badge vs snapshot.
 
+**Command palette** (`⌘⇧P` / View → Command Palette)  
+Fuzzy-filterable bar over core backend actions: ping, refresh queue/briefs,
+register project, ritual (approve/comment/sweep), compact/clear session,
+founding (interview → propose → found), and focus/reload helpers. Runs via
+the localhost API (same contract as the VS Code plugin), not a second desk.
+
 **Out (v0 relics, for now)**  
 Core web admin megapanel as home, meta “context” bar as a co-equal third
 workflow, multi-theme appearance lab in the primary chrome, find/replace
