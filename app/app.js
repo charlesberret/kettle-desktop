@@ -1,10 +1,11 @@
 /**
- * Kettle Desktop v2 scaffold — plugin-shaped sitting over core API.
- * Stages: queue · open/edit/save · brief · ritual · chat (see docs/DESKTOP_V2.md).
+ * Kettle Desktop v2 — plugin-shaped sitting over core API.
+ * Stages: queue · open/edit/save · brief · ritual · chat · founding (see docs/DESKTOP_V2.md).
  */
 (function () {
   "use strict";
 
+  const Ritual = globalThis.KettleRitual;
   const $ = (id) => document.getElementById(id);
   const state = {
     projectId: null,
@@ -14,6 +15,8 @@
     content: "",
     dirty: false,
     streaming: false,
+    phase: "none",
+    interviewStatus: null,
   };
 
   function status(msg) {
@@ -59,11 +62,34 @@
     $("stream").innerHTML = "";
   }
 
-  function setRitualEnabled(on) {
-    $("btnApprove").disabled = !on;
-    $("btnComment").disabled = !on;
-    $("btnSweep").disabled = !state.projectId || state.streaming;
-    $("btnSend").disabled = !state.projectId || state.streaming;
+  function isApprovedEntry(entry) {
+    if (!entry) return false;
+    if (String(entry.status || "").toLowerCase() === "approved") return true;
+    return entry.approved != null && String(entry.approved).trim() !== "";
+  }
+
+  function applyRitualChrome() {
+    if (!Ritual) {
+      $("btnApprove").disabled = !state.entry || state.streaming;
+      $("btnComment").disabled = !state.entry || state.streaming;
+      $("btnSweep").disabled = !state.projectId || state.streaming;
+      $("btnSend").disabled = !state.projectId || state.streaming;
+      return;
+    }
+    const controls = Ritual.ritualControls({
+      phase: state.phase,
+      hasProject: !!state.projectId,
+      hasEntry: !!state.entry,
+      approved: isApprovedEntry(state.entry),
+      streaming: state.streaming,
+    });
+    $("btnApprove").disabled = !controls.canApprove;
+    $("btnApprove").textContent = controls.approveLabel;
+    $("btnComment").disabled = !controls.canComment;
+    $("btnSweep").disabled = !controls.canSweep;
+    $("btnSend").disabled = !state.projectId || state.streaming || controls.interviewing;
+    $("commentDrawer").hidden =
+      $("commentDrawer").hidden || controls.proposing || controls.interviewing;
   }
 
   function renderQueue() {
@@ -73,20 +99,23 @@
     $("queueEmpty").hidden = entries.length > 0;
     for (const e of entries) {
       const item = document.createElement("div");
-      item.className = "qitem" + (state.entry && String(state.entry.id) === String(e.id) ? " active" : "");
+      item.className =
+        "qitem" + (state.entry && String(state.entry.id) === String(e.id) ? " active" : "");
       item.setAttribute("role", "option");
       item.dataset.id = String(e.id);
       const urg = (e.urgency || "").toLowerCase();
       const name = e.title || basename(e.path) || String(e.id);
+      const proposal = Ritual && Ritual.isProposalEntry(e);
       item.innerHTML =
         '<div class="qname"><span class="dot ' +
         urg +
         '"></span>' +
         escapeHtml(name) +
+        (proposal ? ' <span class="qtag">proposal</span>' : "") +
         "</div>" +
         '<div class="qmeta">' +
         escapeHtml(e.path || "") +
-        (e.approved ? " · approved" : "") +
+        (isApprovedEntry(e) ? " · approved" : "") +
         "</div>";
       item.onclick = () => openEntry(e).catch((err) => status(String(err.message || err)));
       box.appendChild(item);
@@ -107,7 +136,9 @@
     if (!entry) {
       take.hidden = true;
       body.textContent = state.projectId
-        ? "Select a queue entry, or chat at project level."
+        ? state.phase === "interviewing"
+          ? "Founding interview — chat with the curator to survey the desk."
+          : "Select a queue entry, or chat at project level."
         : "Select a project to begin.";
       body.classList.add("muted");
       return;
@@ -141,6 +172,31 @@
       "</span>";
   }
 
+  async function refreshPhase() {
+    if (!state.projectId) {
+      state.phase = "none";
+      state.interviewStatus = null;
+      applyRitualChrome();
+      return;
+    }
+    let interviewStatus = "";
+    try {
+      const st = await KettleApi.interviewStatus(state.projectId);
+      state.interviewStatus = st;
+      interviewStatus = st.status || "";
+    } catch {
+      state.interviewStatus = null;
+    }
+    state.phase = Ritual
+      ? Ritual.foundingPhaseFrom({
+          interviewStatus,
+          entries: state.queue,
+          hasEntries: (state.queue || []).length > 0,
+        })
+      : "none";
+    applyRitualChrome();
+  }
+
   async function loadProjects() {
     const data = await KettleApi.projects();
     state.projects = data.projects || [];
@@ -169,11 +225,13 @@
     if (!state.projectId) {
       state.queue = [];
       renderQueue();
+      await refreshPhase();
       return;
     }
     const q = await KettleApi.queue(state.projectId);
     state.queue = q.entries || [];
     renderQueue();
+    await refreshPhase();
   }
 
   async function openEntry(entry) {
@@ -184,7 +242,7 @@
     $("filePath").title = entry.path || "";
     renderBrief(entry);
     renderDiff(entry);
-    setRitualEnabled(true);
+    applyRitualChrome();
     const f = await KettleApi.file(state.projectId, entry.path);
     state.content = f.content || "";
     $("editor").value = state.content;
@@ -202,13 +260,44 @@
     if (fresh) {
       state.entry = fresh;
       renderDiff(fresh);
+      applyRitualChrome();
     }
   }
 
-  async function approve() {
-    if (!state.entry) return;
-    await KettleApi.approve(state.projectId, state.entry.id);
-    status("approved (bookmark)");
+  async function approveOrFound() {
+    if (!state.entry || !state.projectId) return;
+    let target = state.entry;
+    if (Ritual && state.phase === "proposing") {
+      target =
+        Ritual.proposalEntryForFounding(state.queue, state.entry, true) || state.entry;
+    }
+    const res = await KettleApi.approve(state.projectId, target.id);
+    if (res && res.founding) {
+      status("founding desk…");
+      state.streaming = true;
+      applyRitualChrome();
+      appendStream("sys", "— found desk —");
+      try {
+        await KettleApi.found(state.projectId, (ev) => {
+          if (ev.t === "text" && ev.s) appendStream("agent", ev.s);
+          else if (ev.t === "error") appendStream("err", ev.s || "error");
+        });
+        status("desk founded");
+      } catch (e) {
+        appendStream("err", String(e.message || e));
+        status(String(e.message || e));
+      } finally {
+        state.streaming = false;
+      }
+    } else {
+      status("approved (bookmark)");
+    }
+    state.entry = null;
+    $("editor").value = "";
+    $("filePath").textContent = "No file open";
+    setDirty(false);
+    renderBrief(null);
+    renderDiff(null);
     await loadQueue();
   }
 
@@ -230,23 +319,33 @@
     $("chatIn").value = "";
     appendStream("user", msg);
     state.streaming = true;
-    setRitualEnabled(!!state.entry);
+    applyRitualChrome();
     try {
-      const body = {
-        project: state.projectId,
-        message: msg,
-      };
-      if (state.entry) body.id = state.entry.id;
-      await KettleApi.stream("/api/chat", body, (ev) => {
-        if (ev.t === "text" && ev.s) appendStream("agent", ev.s);
-        else if (ev.t === "error") appendStream("err", ev.s || "error");
-        else if (ev.t === "tool" && ev.path) appendStream("sys", "tool · " + (ev.path || ev.tool || ""));
-      });
+      const mode = Ritual ? Ritual.chatModeForPhase(state.phase) : "chat";
+      if (mode === "interview") {
+        await KettleApi.interview(state.projectId, msg, (ev) => {
+          if (ev.t === "text" && ev.s) appendStream("agent", ev.s);
+          else if (ev.t === "error") appendStream("err", ev.s || "error");
+        });
+      } else {
+        const body = {
+          project: state.projectId,
+          message: msg,
+        };
+        if (state.entry) body.id = state.entry.id;
+        await KettleApi.chat(body, (ev) => {
+          if (ev.t === "text" && ev.s) appendStream("agent", ev.s);
+          else if (ev.t === "error") appendStream("err", ev.s || "error");
+          else if (ev.t === "tool" && ev.path)
+            appendStream("sys", "tool · " + (ev.path || ev.tool || ""));
+        });
+      }
+      await loadQueue();
     } catch (e) {
       appendStream("err", String(e.message || e));
     } finally {
       state.streaming = false;
-      setRitualEnabled(!!state.entry);
+      applyRitualChrome();
     }
   }
 
@@ -254,24 +353,20 @@
     if (!state.projectId || state.streaming) return;
     if (!confirm("Run sweep for this sitting?")) return;
     state.streaming = true;
-    setRitualEnabled(!!state.entry);
+    applyRitualChrome();
     appendStream("sys", "— sweep —");
     try {
-      await KettleApi.stream(
-        "/api/sweep",
-        { project: state.projectId },
-        (ev) => {
-          if (ev.t === "text" && ev.s) appendStream("agent", ev.s);
-          else if (ev.t === "error") appendStream("err", ev.s || "error");
-        },
-      );
+      await KettleApi.sweep(state.projectId, (ev) => {
+        if (ev.t === "text" && ev.s) appendStream("agent", ev.s);
+        else if (ev.t === "error") appendStream("err", ev.s || "error");
+      });
       await loadQueue();
       status("sweep finished");
     } catch (e) {
       appendStream("err", String(e.message || e));
     } finally {
       state.streaming = false;
-      setRitualEnabled(!!state.entry);
+      applyRitualChrome();
     }
   }
 
@@ -314,7 +409,8 @@
     const folder = await bridge.pickFolder();
     if (!folder) return;
     const name = basename(folder);
-    await KettleApi.addProject({ path: folder, name });
+    // Core POST /api/projects/add requires `root` (folder path), not `path`.
+    await KettleApi.addProject({ root: folder, name });
     await loadProjects();
     await loadQueue();
     status("project added");
@@ -333,7 +429,6 @@
       setDirty(false);
       renderBrief(null);
       renderDiff(null);
-      setRitualEnabled(false);
       clearStream();
       await loadQueue();
     };
@@ -341,7 +436,7 @@
     $("btnAddProject").onclick = () => addProject().catch((e) => status(String(e.message || e)));
     $("editor").oninput = () => setDirty($("editor").value !== state.content);
     $("btnSave").onclick = () => save().catch((e) => status(String(e.message || e)));
-    $("btnApprove").onclick = () => approve().catch((e) => status(String(e.message || e)));
+    $("btnApprove").onclick = () => approveOrFound().catch((e) => status(String(e.message || e)));
     $("btnComment").onclick = () => {
       $("commentDrawer").hidden = !$("commentDrawer").hidden;
     };
@@ -399,9 +494,7 @@
       await loadQueue();
       await loadModels();
       showApp();
-      setRitualEnabled(false);
-      $("btnSweep").disabled = !state.projectId;
-      $("btnSend").disabled = !state.projectId;
+      applyRitualChrome();
       status((ping.app || "kettle") + " " + (ping.version || "") + " · " + url);
     } catch (e) {
       showBoot("Failed to start: " + (e.message || e));

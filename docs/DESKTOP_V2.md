@@ -84,10 +84,23 @@ No second desk format.
 
 ## Implementation stages (approve between stages)
 
-0. **Scaffold** (this drop) — shell + three panes + API client + queue/open/save/chat smoke.  
-1. **Ritual parity** — approve / comment / sweep / founding streams.  
-2. **Polish** — theme tokens, empty states, founding UX.  
+0. **Scaffold** — shell + three panes + API client + queue/open/save/chat smoke.  
+1. **Ritual parity** (in progress) — Approve · Comment · Sweep chrome; Found Desk →
+   `/api/approve` then `/api/found` when core returns `founding: true`; interview chat
+   routes to `/api/interview`; shared `lib/ritual-parity.js` mirrors kettle-vscode.  
+2. **Polish** — theme tokens (`/api/themes`), empty states, fuller founding UX.  
 3. **Package** — sidecar stamp + install:app on supported Node.
+
+## Contract guards (desktop)
+
+| Guard | Where |
+|-------|--------|
+| Load `app/index.html`, never core `static/index.html` | `main.js` + `test/sitting-ui.test.js` |
+| `POST /api/projects/add` uses **`root`** (not `path`) | `app/api.js` + `test/sitting-api.test.js` |
+| Ritual enablement / Found Desk label | `lib/ritual-parity.js` + `test/ritual-parity.test.js` |
+| Ping / API / desk schema versions | `lib/core-contract.js` |
+
+Dependency remains HTTP-only — see kettle-core [`API.md`](https://github.com/charlesberret/kettle-core/blob/main/API.md) tiers 0–3.
 
 ## Non-goals
 

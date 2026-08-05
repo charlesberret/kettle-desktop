@@ -1,6 +1,8 @@
 /**
  * Thin localhost client for kettle-core — same contract as kettle-vscode/src/api.ts.
  * Desktop v2 never loads core static/index.html; it only uses HTTP/NDJSON.
+ *
+ * Route tiers (kettle-core/API.md): ping · plugin MVP · full sitting · founding.
  */
 (function (global) {
   "use strict";
@@ -85,15 +87,30 @@
     return { text, error };
   }
 
+  /** Register a folder — core expects `root`, not `path` (POST /api/projects/add). */
+  function addProjectBody(opts) {
+    const body = {
+      name: opts.name,
+      root: opts.root || opts.path,
+    };
+    if (opts.kit) body.kit = opts.kit;
+    if (opts.note) body.note = opts.note;
+    if (opts.max_depth != null) body.max_depth = opts.max_depth;
+    return body;
+  }
+
   global.KettleApi = {
     setBaseUrl,
     getBaseUrl,
     jget,
     jpost,
     stream,
+    addProjectBody,
     ping: () => jget("/api/ping"),
     projects: () => jget("/api/projects"),
-    queue: (project) => jget("/api/queue?project=" + encodeURIComponent(project) + "&mutate=1"),
+    /** Viewport refresh — allow founding heal / snapshots (default mutate). */
+    queue: (project) =>
+      jget("/api/queue?project=" + encodeURIComponent(project)),
     file: (project, path) =>
       jget(
         "/api/file?project=" +
@@ -104,8 +121,21 @@
     save: (project, path, content) => jpost("/api/save", { project, path, content }),
     approve: (project, id) => jpost("/api/approve", { project, id }),
     comment: (project, id, text) => jpost("/api/comment", { project, id, text }),
-    addProject: (body) => jpost("/api/projects/add", body),
+    addProject: (opts) => jpost("/api/projects/add", addProjectBody(opts || {})),
     catalog: () => jget("/api/curator/catalog"),
     setCurator: (body) => jpost("/api/curator", body),
+    interviewStatus: (project) =>
+      jget("/api/interview?project=" + encodeURIComponent(project)),
+    interview: (project, message, onEvent, signal) =>
+      stream("/api/interview", { project, message }, onEvent, signal),
+    propose: (project, onEvent, signal) =>
+      stream("/api/propose", { project }, onEvent, signal),
+    found: (project, onEvent, signal) =>
+      stream("/api/found", { project }, onEvent, signal),
+    refreshBriefs: (project, onEvent, signal) =>
+      stream("/api/refresh-briefs", { project }, onEvent, signal),
+    chat: (body, onEvent, signal) => stream("/api/chat", body, onEvent, signal),
+    sweep: (project, onEvent, signal) =>
+      stream("/api/sweep", { project }, onEvent, signal),
   };
-})(window);
+})(typeof window !== "undefined" ? window : globalThis);
