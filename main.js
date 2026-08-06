@@ -8,6 +8,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
 const net = require('net');
+const os = require('os');
 const path = require('path');
 const {
   validateCoreIndex,
@@ -189,11 +190,17 @@ function logSidecar(chunk) {
 
 function requestSidecar(port, pathname) {
   return new Promise((resolve, reject) => {
+    const headers = {};
+    const token = readDiscoveryToken();
+    if (token && String(pathname).startsWith('/api/')) {
+      headers['X-Kettle-Token'] = token;
+    }
     const req = http.get({
       hostname: '127.0.0.1',
       port,
       path: pathname,
       timeout: 500,
+      headers,
     }, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
@@ -255,6 +262,20 @@ function waitForSidecar(port, timeoutMs = 15000, provenance = null) {
 
 /** Canonical kettle-core default — prefer this so the plugin can attach without discovery. */
 const DEFAULT_CORE_PORT = 4242;
+
+function runtimeCachePath() {
+  return path.join(os.homedir(), '.cache', 'kettle', 'server.json');
+}
+
+/** Per-boot token from core discovery (written at bind, mode 0600). */
+function readDiscoveryToken() {
+  try {
+    const data = JSON.parse(fs.readFileSync(runtimeCachePath(), 'utf8'));
+    return typeof data.token === 'string' ? data.token : '';
+  } catch {
+    return '';
+  }
+}
 
 function findFreePort() {
   return new Promise((resolve, reject) => {
@@ -599,6 +620,8 @@ ipcMain.handle('kettle:get-core-url', async () => {
   if (!serverPort) return null;
   return `http://127.0.0.1:${serverPort}`;
 });
+
+ipcMain.handle('kettle:get-core-token', async () => readDiscoveryToken());
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {

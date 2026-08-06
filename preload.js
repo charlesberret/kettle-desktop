@@ -6,6 +6,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('kettle', {
   pickFolder: () => ipcRenderer.invoke('kettle:pick-folder'),
   getCoreUrl: () => ipcRenderer.invoke('kettle:get-core-url'),
+  getCoreToken: () => ipcRenderer.invoke('kettle:get-core-token'),
 });
 
 // Legacy shim for any residual pywebview-era callers.

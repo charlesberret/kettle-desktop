@@ -486,6 +486,9 @@
       const url = await bridge.getCoreUrl();
       if (!url) throw new Error("core URL not ready");
       KettleApi.setBaseUrl(url);
+      if (bridge.getCoreToken) {
+        KettleApi.setToken(await bridge.getCoreToken());
+      }
       const ping = await KettleApi.ping();
       if (ping.app !== "kettle" && ping.app !== "setsweep") {
         throw new Error("unexpected app identity: " + ping.app);
