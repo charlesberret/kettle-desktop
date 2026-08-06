@@ -19,6 +19,7 @@ function loadKettleApi() {
         url: String(url),
         method: opts.method || 'GET',
         body: opts.body ? JSON.parse(opts.body) : null,
+        headers: opts.headers || {},
       });
       const streamBody = {
         getReader() {
@@ -106,3 +107,14 @@ test('queue and ritual routes match core plugin MVP + founding tiers', async () 
   assert.equal(urls[6], '/api/found');
   assert.equal(urls[7], '/api/refresh-briefs');
 });
+
+test('API requests send X-Kettle-Token from setToken', async () => {
+  const { api, calls } = loadKettleApi();
+  api.setBaseUrl('http://127.0.0.1:43123');
+  api.setToken('test-token-abc');
+  await api.ping();
+  await api.save('alpha', '/tmp/x.md', 'hi');
+  assert.equal(calls[0].headers['X-Kettle-Token'], 'test-token-abc');
+  assert.equal(calls[1].headers['X-Kettle-Token'], 'test-token-abc');
+});
+

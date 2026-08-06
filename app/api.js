@@ -8,6 +8,7 @@
   "use strict";
 
   let baseUrl = "";
+  let authToken = "";
 
   function setBaseUrl(url) {
     baseUrl = String(url || "").replace(/\/$/, "");
@@ -17,8 +18,22 @@
     return baseUrl;
   }
 
+  function setToken(token) {
+    authToken = String(token || "");
+  }
+
+  function getToken() {
+    return authToken;
+  }
+
+  function apiHeaders(extra) {
+    const headers = Object.assign({}, extra || {});
+    if (authToken) headers["X-Kettle-Token"] = authToken;
+    return headers;
+  }
+
   async function jget(path) {
-    const res = await fetch(baseUrl + path);
+    const res = await fetch(baseUrl + path, { headers: apiHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || res.statusText || String(res.status));
     return data;
@@ -27,7 +42,7 @@
   async function jpost(path, body) {
     const res = await fetch(baseUrl + path, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body || {}),
     });
     const data = await res.json().catch(() => ({}));
@@ -42,7 +57,7 @@
   async function stream(path, body, onEvent, signal) {
     const res = await fetch(baseUrl + path, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body || {}),
       signal,
     });
@@ -102,6 +117,8 @@
   global.KettleApi = {
     setBaseUrl,
     getBaseUrl,
+    setToken,
+    getToken,
     jget,
     jpost,
     stream,
