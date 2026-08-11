@@ -42,6 +42,9 @@ test('loads local app sitting + shared ritual parity — not core static shell',
   assert.doesNotMatch(html, /static\/index\.html/);
   assert.match(html, /src="\.\.\/lib\/ritual-parity\.js"/);
   assert.match(preload, /never loads core static\/index\.html/);
+  // file:// sitting ⇒ Origin: null + CORS preflight; boot surfaces core skew clearly
+  assert.match(appJs, /Origin: null/);
+  assert.match(appJs, /getCoreToken/);
 });
 
 test('API client registers projects with root (core contract)', () => {

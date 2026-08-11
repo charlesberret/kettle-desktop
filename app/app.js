@@ -500,7 +500,14 @@
       applyRitualChrome();
       status((ping.app || "kettle") + " " + (ping.version || "") + " · " + url);
     } catch (e) {
-      showBoot("Failed to start: " + (e.message || e));
+      let msg = String(e.message || e);
+      // Electron loadFile → file:// sends Origin: null and CORS-preflights X-Kettle-Token.
+      // Core must allow opaque null + OPTIONS /api/ (see kettle-core API.md auth).
+      if (/failed to fetch|networkerror|load failed|cross-origin/i.test(msg)) {
+        msg +=
+          " (desktop file:// sitting needs a kettle-core that allows Origin: null and CORS OPTIONS on /api/)";
+      }
+      showBoot("Failed to start: " + msg);
     }
   }
 

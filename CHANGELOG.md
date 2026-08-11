@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- **Boot against hardened core:** clearer error when `file://` → localhost `/api/` fails
+  (opaque `Origin: null` / missing CORS OPTIONS). Needs a kettle-core that allows
+  `Origin: null` and answers `OPTIONS /api/` while still requiring `X-Kettle-Token`.
 - **Project register:** `POST /api/projects/add` now sends `root` (core contract);
   the scaffold incorrectly posted `path`, so Add Project could never register.
 

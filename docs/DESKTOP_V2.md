@@ -61,7 +61,7 @@ right-rail context.
 ```text
 kettle-desktop (Electron)
   main.js          window, menu, sidecar lifecycle
-  preload.js       window.kettle.* (folder pick, core base URL)
+  preload.js       window.kettle.* (folder pick, core base URL, token)
   app/*            v2 sitting UI (this charter)
   lib/*            contract + startup (unchanged role)
 
@@ -72,6 +72,12 @@ kettle-core
 
 Dependency rule: desktop → core **HTTP API** only. No import of core Python.
 No second desk format.
+
+**Auth note:** the sitting is loaded with `loadFile(app/index.html)` (`file://`).
+Chromium then calls `http://127.0.0.1:<port>/api/…` with opaque `Origin: null` and
+CORS-preflights the `X-Kettle-Token` header. Core must allow that opaque origin and
+answer `OPTIONS /api/…` (see kettle-core `API.md`). Token still comes from
+`~/.cache/kettle/server.json` via `window.kettle.getCoreToken`.
 
 ## Visual guidelines (programmatic later)
 
