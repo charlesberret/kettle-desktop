@@ -6,6 +6,7 @@
   "use strict";
 
   let baseUrl = "";
+  let token = "";
 
   function setBaseUrl(url) {
     baseUrl = String(url || "").replace(/\/$/, "");
@@ -15,8 +16,21 @@
     return baseUrl;
   }
 
+  // Every /api/ route requires X-Kettle-Token (kettle-core docs/AUTH-TOKEN.md).
+  // The renderer can't read the discovery file; the main process reads it and
+  // hands the token over via the preload bridge (see app.js boot).
+  function setToken(t) {
+    token = String(t || "");
+  }
+
+  function authHeaders(extra) {
+    const h = Object.assign({}, extra || {});
+    if (token) h["X-Kettle-Token"] = token;
+    return h;
+  }
+
   async function jget(path) {
-    const res = await fetch(baseUrl + path);
+    const res = await fetch(baseUrl + path, { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || res.statusText || String(res.status));
     return data;
@@ -25,7 +39,7 @@
   async function jpost(path, body) {
     const res = await fetch(baseUrl + path, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body || {}),
     });
     const data = await res.json().catch(() => ({}));
@@ -40,7 +54,7 @@
   async function stream(path, body, onEvent, signal) {
     const res = await fetch(baseUrl + path, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body || {}),
       signal,
     });
@@ -88,6 +102,7 @@
   global.KettleApi = {
     setBaseUrl,
     getBaseUrl,
+    setToken,
     jget,
     jpost,
     stream,

@@ -618,6 +618,22 @@ ipcMain.handle('kettle:get-core-url', async () => {
   return `http://127.0.0.1:${serverPort}`;
 });
 
+// Per-boot auth token for the /api/ gate (kettle-core docs/AUTH-TOKEN.md).
+// The renderer can't read the 0600 discovery file, so read it here and hand
+// the token over the bridge. Re-read on each call so a boot rotation is picked
+// up without restarting the shell.
+function readCoreToken() {
+  try {
+    const p = path.join(require('os').homedir(), '.cache', 'kettle', 'server.json');
+    const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+    return typeof data.token === 'string' && data.token ? data.token : null;
+  } catch {
+    return null;
+  }
+}
+
+ipcMain.handle('kettle:get-core-token', async () => readCoreToken());
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
