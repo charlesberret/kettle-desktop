@@ -77,7 +77,10 @@
       item.setAttribute("role", "option");
       item.dataset.id = String(e.id);
       const urg = (e.urgency || "").toLowerCase();
-      const name = e.title || basename(e.path) || String(e.id);
+      // Frontmatter titles can arrive with literal \n / \t escapes (LAB-28);
+      // unescape for display so the header shows whitespace, not the sequence.
+      const name =
+        KettleText.unescapeMeta(e.title) || basename(e.path) || String(e.id);
       item.innerHTML =
         '<div class="qname"><span class="dot ' +
         urg +
