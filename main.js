@@ -1,7 +1,7 @@
-// Electron shell for Kettle Desktop v2. Attaches to a compatible core already on
-// :4242 or spawns an owned Python sidecar, then loads the local app/ sitting UI
-// (plugin-shaped viewport — see docs/DESKTOP_V2.md). Core static/index.html is
-// not used as the product shell.
+// Electron shell for Kettle. Attaches to a compatible core already on :4242 or
+// spawns an owned Python sidecar, then loads that core's sitting
+// (static/index.html) in a BrowserWindow. Desktop does not own a second UI —
+// preload.js shims window.pywebview.api and injects body.desktop-shell.
 
 const { app, BrowserWindow, Menu, dialog, shell, ipcMain, nativeImage } = require('electron');
 const { spawn } = require('child_process');
@@ -404,19 +404,6 @@ function closeSplash() {
   splashWindow = null;
 }
 
-function openCommandPalette() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  // Idempotent open (renderer show()). Avoids race with the renderer's own
-  // keydown handler for the same accelerator.
-  mainWindow.webContents
-    .executeJavaScript(
-      'window.openCommandPalette && window.openCommandPalette()'
-    )
-    .catch((err) => {
-      console.warn('[shell] openCommandPalette failed:', err.message);
-    });
-}
-
 function buildMenu() {
   const openSettings = () => mainWindow && mainWindow.webContents.executeJavaScript(
     'window.openAdmin && openAdmin()'
@@ -441,11 +428,6 @@ function buildMenu() {
     {
       label: 'View',
       submenu: [
-        {
-          label: 'Command Palette…',
-          accelerator: 'CmdOrCtrl+Shift+P',
-          click: () => openCommandPalette(),
-        },
         {
           label: 'Reload',
           accelerator: 'CmdOrCtrl+R',
@@ -500,17 +482,28 @@ function wireNavigation(win, port) {
   });
 
   win.webContents.on('will-navigate', (e, url) => {
-    // Allow the local app shell and same-origin core API navigations only.
-    if (url.startsWith('file://') || isSidecarUrl(url, port)) return;
+    if (isSidecarUrl(url, port)) return;
     e.preventDefault();
     openExternalUrl(url);
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('file://') || isSidecarUrl(url, port)) {
-      return { action: 'allow' };
+    if (isSidecarUrl(url, port)) {
+      win.loadURL(url).catch((err) => {
+        console.warn(`[shell] failed to load sidecar URL ${url}:`, err.message);
+      });
+      return { action: 'deny' };
     }
     openExternalUrl(url);
     return { action: 'deny' };
+  });
+
+  win.webContents.on('did-finish-load', () => {
+    const init = process.platform === 'darwin'
+      ? "document.body.classList.add('desktop-shell');"
+      : '';
+    win.webContents.executeJavaScript(
+      init + "window.dispatchEvent(new Event('pywebviewready'));"
+    ).catch(() => {});
   });
 }
 
@@ -580,8 +573,8 @@ async function createWindow() {
     mainWindow.show();
   });
 
-  // v2 sitting lives in-app; core is API-only (plugin model).
-  await mainWindow.loadFile(path.join(__dirname, 'app', 'index.html'));
+  // Cache-bust the sitting shell — Electron otherwise keeps a stale index.html.
+  await mainWindow.loadURL(`http://127.0.0.1:${serverPort}/?ui=${Date.now()}`);
   mainWindow.on('close', () => saveWindowState(mainWindow));
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -655,7 +648,7 @@ if (!gotLock) {
     buildMenu();
     try {
       await createWindow();
-      console.log(`[shell] v2 sitting loaded; core API http://127.0.0.1:${serverPort}/`);
+      console.log(`[shell] window loaded http://127.0.0.1:${serverPort}/`);
     } catch (err) {
       console.error('[shell] startup failed:', err);
       showStartupError(err);

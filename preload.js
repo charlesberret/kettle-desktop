@@ -1,5 +1,6 @@
-// Desktop v2 bridge. The sitting UI lives in app/ and talks to core over HTTP;
-// it never loads core static/index.html.
+// Thin shell bridge. The product sitting is core static/index.html (same-origin
+// on the sidecar). This preload exposes the native folder picker the sitting
+// already calls, plus optional core URL/token helpers for host chrome.
 
 const { contextBridge, ipcRenderer } = require('electron');
 

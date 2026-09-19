@@ -4,9 +4,13 @@
 
 ### Changed
 
-- **Desktop v2 scaffold:** product UI is now `app/` (queue · editor · desk),
-  modeled on the VS Code/Cursor plugin sitting, not core `static/index.html`.
-- v0 web-sitting shell preserved as tag `desktop-v0-web-sitting` and branch
+- **Rejoined the core sitting.** The window loads `static/index.html` from the
+  sidecar again. Desktop is a thin host (titlebar, menu, sidecar) — not a
+  second frontend. The July 2026 `app/` scaffold is parked under
+  `legacy/v2-scaffold/`.
+- **Desktop v2 scaffold** (historical): briefly loaded `app/` instead of the
+  core sitting; reversed so sitting polish cannot drift.
+- v0 web-sitting shell also remains as tag `desktop-v0-web-sitting` and branch
   `legacy/web-sitting-shell`.
 - Renamed the macOS shell, bundle identity, sidecar, and release inputs from
   Setsweep to Kettle.
