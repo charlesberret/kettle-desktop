@@ -189,11 +189,19 @@ function logSidecar(chunk) {
 
 function requestSidecar(port, pathname) {
   return new Promise((resolve, reject) => {
+    const headers = {};
+    // Core rejects every /api/ call without the per-boot token. The sitting
+    // page gets it from the HTML injection; this main-process probe does not.
+    if (String(pathname).startsWith('/api/')) {
+      const token = readCoreToken();
+      if (token) headers['X-Kettle-Token'] = token;
+    }
     const req = http.get({
       hostname: '127.0.0.1',
       port,
       path: pathname,
       timeout: 500,
+      headers,
     }, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
