@@ -28,13 +28,17 @@ function findFreePort() {
   });
 }
 
-function request(pathname, port) {
+function request(pathname, port, token) {
   return new Promise((resolve, reject) => {
     const req = http.get({
       hostname: '127.0.0.1',
       port,
       path: pathname,
       timeout: 1000,
+      // Every /api/ route requires the per-boot token (kettle-core
+      // docs/AUTH-TOKEN.md); without it the sidecar answers 403 and this smoke
+      // waits out its deadline for a server that is perfectly healthy.
+      headers: token ? { 'X-Kettle-Token': token } : {},
     }, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
@@ -52,11 +56,22 @@ function request(pathname, port) {
   });
 }
 
-async function waitForPing(port, deadline, provenance) {
+/** Port and per-boot token, as every viewport reads them. */
+function readDiscovery(home) {
+  try {
+    const raw = fs.readFileSync(path.join(home, '.cache', 'kettle', 'server.json'), 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+async function waitForPing(port, deadline, provenance, home) {
   let lastErr = null;
   while (Date.now() < deadline) {
     try {
-      const res = await request('/api/ping', port);
+      const discovery = readDiscovery(home);
+      const res = await request('/api/ping', port, discovery && discovery.token);
       if (res.statusCode === 200) {
         const body = JSON.parse(res.body.toString('utf8'));
         return validateCorePing(body, { port, compatibility, provenance });
@@ -83,9 +98,13 @@ async function main() {
   const projectsPath = path.join(tmpDir, 'projects.json');
   fs.writeFileSync(projectsPath, `${JSON.stringify({ projects: [] }, null, 2)}\n`);
 
+  // HOME inside the scratch dir: the sidecar writes ~/.cache/kettle/server.json on
+  // bind, and inheriting the real HOME would overwrite the discovery record the
+  // developer's live window and its viewports are using.
   const proc = spawn(SIDECAR, ['--port', String(port), '--no-open'], {
     env: {
       ...process.env,
+      HOME: tmpDir,
       DESK_PROJECTS: projectsPath,
       PYTHONUNBUFFERED: '1',
     },
@@ -102,7 +121,7 @@ async function main() {
 
   try {
     const deadline = Date.now() + TIMEOUT_MS;
-    const ping = await waitForPing(port, deadline, provenance);
+    const ping = await waitForPing(port, deadline, provenance, tmpDir);
     const root = await request('/', port);
     if (root.statusCode !== 200) {
       throw new Error(`Expected GET / to return 200, got ${root.statusCode}`);

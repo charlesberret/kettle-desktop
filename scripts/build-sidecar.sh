@@ -16,20 +16,20 @@ fi
 CORE_PROVENANCE="$("$ROOT/scripts/check-core-source.sh" "$KETTLE_SRC")"
 IFS=$'\t' read -r KETTLE_COMMIT KETTLE_DIRTY KETTLE_SRC <<< "$CORE_PROVENANCE"
 
-if [[ -n "${KETTLE_VENV:-}" ]]; then
-  VENV="$KETTLE_VENV"
-elif [[ -n "${SETSWEEP_VENV:-}" && -x "$SETSWEEP_VENV/bin/python" ]]; then
-  VENV="$SETSWEEP_VENV"
-elif [[ -x "${HOME}/.kettle-venv/bin/python" ]]; then
-  VENV="${HOME}/.kettle-venv"
-elif [[ -x "${HOME}/.setsweep-venv/bin/python" ]]; then
-  VENV="${HOME}/.setsweep-venv"
-else
-  VENV="$ROOT/.build-venv"
+# A build venv of our own, never the developer's. This script installs kettle
+# NON-editable (a bundler cannot follow an editable finder hook — PyInstaller
+# reported every `kettle.*` hidden import as "not found" and shipped a broken
+# sidecar), so pointing it at ~/.kettle-venv would replace the working editable
+# install in the venv the developer uses all day.
+VENV="${KETTLE_VENV:-$ROOT/.build-venv}"
+if [[ "$VENV" == "${HOME}/.kettle-venv" || "$VENV" == "${HOME}/.setsweep-venv" ]]; then
+  echo "error: refusing to build in $VENV — this install is not editable and would" >&2
+  echo "replace your working checkout install. Unset KETTLE_VENV." >&2
+  exit 1
 fi
 
 if [[ ! -x "$VENV/bin/python" ]]; then
-  echo "[build-sidecar] creating venv at $VENV"
+  echo "[build-sidecar] creating build venv at $VENV"
   python3 -m venv "$VENV"
 fi
 
@@ -38,29 +38,37 @@ PYTHON="$VENV/bin/python"
 echo "[build-sidecar] kettle source: $KETTLE_SRC"
 echo "[build-sidecar] venv: $VENV"
 
-KETTLE_VER="$(PYTHONPATH="$KETTLE_SRC" "$PYTHON" -c \
-  "import kettle_contract as c; print(c.core_version())")"
-API_VERSION="$(PYTHONPATH="$KETTLE_SRC" "$PYTHON" -c \
-  "import kettle_contract as c; print(c.API_VERSION)")"
-DESK_SCHEMA_VERSION="$(PYTHONPATH="$KETTLE_SRC" "$PYTHON" -c \
-  "import kettle_contract as c; print(c.DESK_SCHEMA_VERSION)")"
+# Read the contract from the installed package, not from a PYTHONPATH pointed at the
+# repo root: the flat modules moved into kettle/. Non-editable on purpose (see the
+# venv note above) — this is also what makes the bundle match the wheel.
+"$PYTHON" -m pip install -q -U pip
+"$PYTHON" -m pip install -q "$KETTLE_SRC"
+KETTLE_VER="$("$PYTHON" -c \
+  "from kettle import kettle_contract as c; print(c.core_version())")"
+API_VERSION="$("$PYTHON" -c \
+  "from kettle import kettle_contract as c; print(c.API_VERSION)")"
+DESK_SCHEMA_VERSION="$("$PYTHON" -c \
+  "from kettle import kettle_contract as c; print(c.DESK_SCHEMA_VERSION)")"
 SHELL_VER="$(node -p "require('$ROOT/package.json').version")"
 PYTHON_VER="$("$PYTHON" -c "import platform; print(platform.python_version())")"
 KETTLE_INDEX_SHA256="$("$PYTHON" -c \
   "import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())" \
-  "$KETTLE_SRC/static/index.html")"
+  "$KETTLE_SRC/kettle/static/index.html")"
 
 if [[ -z "$KETTLE_VER" || "$KETTLE_VER" == "unknown" ]]; then
   echo "error: kettle-core did not report a release version" >&2
   exit 1
 fi
 
-"$PYTHON" -m pip install -q -e "$KETTLE_SRC"
 "$PYTHON" -m pip install -q pyinstaller
 
-export KETTLE_SRC
+# The packaging recipe lives in kettle-core (packaging/kettle.spec) so the bundle
+# cannot drift from the package it bundles — this shell's own copy did exactly that,
+# pointing at kettle_contract.py and static/index.html at the repo root long after
+# they moved into kettle/. onedir because a sidecar starts on every app launch.
+export KETTLE_SRC KETTLE_BUNDLE=onedir KETTLE_BUNDLE_NAME=kettle-sidecar
 cd "$ROOT"
-"$PYTHON" -m PyInstaller --noconfirm --clean kettle-sidecar.spec
+"$PYTHON" -m PyInstaller --noconfirm --clean "$KETTLE_SRC/packaging/kettle.spec"
 
 # Catch a concurrent source edit or a build tool that dirtied core. Release
 # provenance must describe the same clean revision PyInstaller just consumed.

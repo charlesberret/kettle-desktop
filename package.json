@@ -72,12 +72,10 @@
           "^/icon\\.iconset($|/)",
           "^/icon\\.icns$",
           "^/kettle-compatibility\\.json$",
-          "^/kettle-sidecar\\.spec$",
           "^/node_modules($|/)",
           "^/package-lock\\.json$",
           "^/resources($|/)",
           "^/scripts($|/)",
-          "^/sidecar_entry\\.py$",
           "^/test($|/)"
         ],
         "extraResource": [

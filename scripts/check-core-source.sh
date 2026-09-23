@@ -9,7 +9,10 @@ if [[ -z "$KETTLE_SRC" || ! -d "$KETTLE_SRC" ]]; then
 fi
 
 SOURCE_ROOT="$(cd "$KETTLE_SRC" && pwd -P)"
-for required in pyproject.toml kettle_contract.py static/index.html; do
+# Package layout (kettle/…) plus the packaging recipe this shell now consumes
+# instead of keeping its own copy.
+for required in pyproject.toml kettle/kettle_contract.py kettle/static/index.html \
+                packaging/kettle.spec packaging/entry.py; do
   if [[ ! -f "$SOURCE_ROOT/$required" ]]; then
     echo "error: kettle-core source is missing $required" >&2
     exit 1
