@@ -13,11 +13,16 @@ function git(cwd, args) {
   return execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' }).trim();
 }
 
+// The layout the gate checks: package sources under kettle/, and the packaging
+// recipe this shell consumes from core instead of keeping its own copy.
 function makeCore(root) {
-  fs.mkdirSync(path.join(root, 'static'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'kettle', 'static'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'packaging'), { recursive: true });
   fs.writeFileSync(path.join(root, 'pyproject.toml'), '[project]\nname="kettle"\nversion="0.2.0"\n');
-  fs.writeFileSync(path.join(root, 'kettle_contract.py'), 'API_VERSION=0\nDESK_SCHEMA_VERSION=0\n');
-  fs.writeFileSync(path.join(root, 'static', 'index.html'), '<!doctype html>\n');
+  fs.writeFileSync(path.join(root, 'kettle', 'kettle_contract.py'), 'API_VERSION=0\nDESK_SCHEMA_VERSION=0\n');
+  fs.writeFileSync(path.join(root, 'kettle', 'static', 'index.html'), '<!doctype html>\n');
+  fs.writeFileSync(path.join(root, 'packaging', 'kettle.spec'), '# fixture spec\n');
+  fs.writeFileSync(path.join(root, 'packaging', 'entry.py'), 'from kettle.kettle_main import main\n');
 }
 
 function runGate(source, env = {}) {
@@ -40,7 +45,7 @@ test('accepts only a clean, versioned core by default', (t) => {
   assert.equal(clean.status, 0, clean.stderr);
   assert.match(clean.stdout, /^[0-9a-f]{12}\tfalse\t/);
 
-  fs.appendFileSync(path.join(tmp, 'static', 'index.html'), '<!-- dirty -->\n');
+  fs.appendFileSync(path.join(tmp, 'kettle', 'static', 'index.html'), '<!-- dirty -->\n');
   const dirty = runGate(tmp);
   assert.notEqual(dirty.status, 0);
   assert.match(dirty.stderr, /refusing to bundle an unverified kettle-core tree/);

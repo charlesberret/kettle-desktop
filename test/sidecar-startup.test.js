@@ -57,11 +57,13 @@ test('attaches non-destructively when a compatible core already owns 4242', asyn
 });
 
 test('falls back deliberately when the 4242 occupant is incompatible', async () => {
+  const incompatible = new Error('Unsupported Kettle API version 1');
+  incompatible.code = 'incompatible-core';
   const plan = await planSidecarStartup({
     defaultPort: 4242,
     isPortFree: async () => false,
     pingCompatibleCore: async () => {
-      throw new Error('Unsupported Kettle API version 1');
+      throw incompatible;
     },
     findFreePort: async () => 49100,
   });
@@ -72,4 +74,27 @@ test('falls back deliberately when the 4242 occupant is incompatible', async () 
     reason: 'default-port-incompatible',
     detail: 'Unsupported Kettle API version 1',
   });
+});
+
+test('does not spawn a second core when the 4242 probe times out or is refused', async () => {
+  for (const code of ['core-timeout', 'core-auth']) {
+    let foundFallback = false;
+    const err = new Error(code);
+    err.code = code;
+    await assert.rejects(
+      () => planSidecarStartup({
+        defaultPort: 4242,
+        isPortFree: async () => false,
+        pingCompatibleCore: async () => {
+          throw err;
+        },
+        findFreePort: async () => {
+          foundFallback = true;
+          return 49100;
+        },
+      }),
+      (caught) => caught === err,
+    );
+    assert.equal(foundFallback, false, code);
+  }
 });
