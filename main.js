@@ -14,6 +14,7 @@ const {
   validateCorePing,
 } = require('./lib/core-contract');
 const { planSidecarStartup } = require('./lib/sidecar-startup');
+const { tokenForProbe } = require('./lib/discovery-token');
 
 const KETTLE_CMD = process.env.KETTLE_CMD || process.env.SETSWEEP_CMD || 'kettle';
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['https:', 'http:', 'mailto:']);
@@ -187,52 +188,65 @@ function logSidecar(chunk) {
   if (sidecarLog && !sidecarLog.destroyed) sidecarLog.write(chunk);
 }
 
-function requestSidecar(port, pathname) {
+function requestSidecar(port, pathname, opts = {}) {
   return new Promise((resolve, reject) => {
     const headers = {};
-    // Core rejects every /api/ call without the per-boot token. The sitting
-    // page gets it from the HTML injection; this main-process probe does not.
+    // Core rejects every /api/ call without the per-boot token. Send the
+    // discovery token only when the file names this port. The previous core's
+    // token makes a new sidecar answer 403.
     if (String(pathname).startsWith('/api/')) {
-      const token = readCoreToken();
+      const token = opts.token !== undefined ? opts.token : tokenForProbe(readDiscovery(), port);
       if (token) headers['X-Kettle-Token'] = token;
     }
     const req = http.get({
       hostname: '127.0.0.1',
       port,
       path: pathname,
-      timeout: 500,
+      timeout: opts.timeout ?? 3000,
       headers,
     }, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
       res.on('end', () => {
         if (res.statusCode !== 200) {
-          reject(new Error(`Sidecar ${pathname} returned HTTP ${res.statusCode}`));
+          const err = new Error(`Sidecar ${pathname} returned HTTP ${res.statusCode}`);
+          err.statusCode = res.statusCode;
+          if (res.statusCode === 403) err.code = 'core-auth';
+          reject(err);
           return;
         }
         resolve(Buffer.concat(chunks));
       });
     });
     req.on('timeout', () => {
-      req.destroy(new Error(`Timed out waiting for sidecar ${pathname}`));
+      const err = new Error(`Timed out waiting for sidecar ${pathname}`);
+      err.code = 'core-timeout';
+      req.destroy(err);
     });
     req.on('error', reject);
   });
 }
 
 async function pingSidecar(port, provenance = null) {
-  const raw = await requestSidecar(port, '/api/ping');
+  const raw = await requestSidecar(port, '/api/ping', { timeout: 3000 });
   let body;
   try {
     body = JSON.parse(raw.toString('utf8'));
   } catch (err) {
-    throw new Error(`Could not parse sidecar ping: ${err.message}`);
+    const parseErr = new Error(`Could not parse sidecar ping: ${err.message}`);
+    parseErr.code = 'incompatible-core';
+    throw parseErr;
   }
-  return validateCorePing(body, {
-    port,
-    compatibility: CORE_COMPATIBILITY,
-    provenance,
-  });
+  try {
+    return validateCorePing(body, {
+      port,
+      compatibility: CORE_COMPATIBILITY,
+      provenance,
+    });
+  } catch (err) {
+    err.code = 'incompatible-core';
+    throw err;
+  }
 }
 
 async function verifyCanonicalCoreIndex(port, provenance) {
@@ -529,7 +543,26 @@ async function createWindow() {
   const startup = await planSidecarStartup({
     defaultPort: DEFAULT_CORE_PORT,
     isPortFree,
-    pingCompatibleCore: (port) => pingSidecar(port),
+    pingCompatibleCore: async (port) => {
+      try {
+        return await pingSidecar(port);
+      } catch (err) {
+        if (err && err.code === 'core-auth') {
+          throw new Error(
+            `Kettle on port ${port} refused the discovery token. `
+            + 'The core is running, but ~/.cache/kettle/server.json does not match it. '
+            + 'Restart kettle so the discovery file is rewritten. Not starting a second core.'
+          );
+        }
+        if (err && err.code === 'core-timeout') {
+          throw new Error(
+            `Kettle on port ${port} did not answer /api/ping in time. `
+            + 'Not starting a second core.'
+          );
+        }
+        throw err;
+      }
+    },
     findFreePort,
   });
   serverPort = startup.port;
@@ -623,14 +656,22 @@ ipcMain.handle('kettle:get-core-url', async () => {
 // The renderer can't read the 0600 discovery file, so read it here and hand
 // the token over the bridge. Re-read on each call so a boot rotation is picked
 // up without restarting the shell.
-function readCoreToken() {
+function readDiscovery() {
   try {
     const p = path.join(require('os').homedir(), '.cache', 'kettle', 'server.json');
     const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-    return typeof data.token === 'string' && data.token ? data.token : null;
+    const port = Number(data.port);
+    if (!Number.isInteger(port)) return null;
+    const token = typeof data.token === 'string' && data.token ? data.token : null;
+    return { port, token };
   } catch {
     return null;
   }
+}
+
+function readCoreToken() {
+  const discovery = readDiscovery();
+  return discovery && discovery.token ? discovery.token : null;
 }
 
 ipcMain.handle('kettle:get-core-token', async () => readCoreToken());
