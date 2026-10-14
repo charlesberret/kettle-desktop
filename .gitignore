@@ -1,29 +1,59 @@
+# House local surface — never publish.
+.local/
+.inbox/
+.coordination/
+.claude/
+.cursor/
+.grok/
+.aider*
+.worktrees/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Node
 node_modules/
 out/
 build/
 dist/
+*.tsbuildinfo
+.turbo/
+.cache/
+coverage/
+*.vsix
+
+# Python sidecar build
 .build-venv/
-.DS_Store
-.cursor/
-*.prerewrite-bak
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
 
 # PyInstaller sidecar (built by scripts/build-sidecar.sh)
 resources/kettle-sidecar/
 resources/version.json
 
-# Agent working files (kept on disk, never published)
-.coordination/
-.inbox/
-.local/
-.claude/
-.grok/
-.aider*
-.idea/
-.env
-.env.*
-!.env.example
-*.swp
-*~
+# OS
+.DS_Store
+.AppleDouble
+.LSOverride
 Thumbs.db
+*~
+*.swp
+*.swo
+*.bak
+*.prerewrite-bak
+
+# Editors
+.idea/
 *.code-workspace
+*.sublime-project
+*.sublime-workspace
+
+# Logs
 *.log
