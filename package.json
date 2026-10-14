@@ -69,7 +69,6 @@
           "^/dist($|/)",
           "^/assets($|/)",
           "^/legacy($|/)",
-          "^/icon\\.iconset($|/)",
           "^/icon\\.icns$",
           "^/kettle-compatibility\\.json$",
           "^/node_modules($|/)",
