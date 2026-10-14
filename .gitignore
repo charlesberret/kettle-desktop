@@ -10,3 +10,8 @@ dist/
 # PyInstaller sidecar (built by scripts/build-sidecar.sh)
 resources/kettle-sidecar/
 resources/version.json
+
+# Agent working files (kept on disk, never published)
+.coordination/
+.inbox/
+.local/
