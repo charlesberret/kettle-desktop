@@ -15,3 +15,21 @@ resources/version.json
 .coordination/
 .inbox/
 .local/
+
+# Local surface — not for a public tree
+.claude/
+.grok/
+.aider*
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.idea/
+*.swp
+Thumbs.db
