@@ -15,3 +15,15 @@ resources/version.json
 .coordination/
 .inbox/
 .local/
+.claude/
+.grok/
+.aider*
+.idea/
+.env
+.env.*
+!.env.example
+*.swp
+*~
+Thumbs.db
+*.code-workspace
+*.log
